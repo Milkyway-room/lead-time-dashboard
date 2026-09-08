@@ -74,10 +74,15 @@
   .tc-stat .tc-stat-sub{font-size:9px; font-family:'JetBrains Mono',monospace; color:var(--text-faint);}
   .tujuan-card-body{display:none; border-top:1px dashed var(--border); background:#fbfcfe;}
   .tujuan-card.expanded .tujuan-card-body{display:block;}
-  .vendor-modus-row{display:flex; align-items:center; gap:10px; padding:9px 15px 9px 38px; border-top:1px solid #f0f2f8; font-size:12px;}
+  .vendor-block{border-top:1px solid #f0f2f8;}
+  .vendor-modus-row{display:flex; align-items:center; gap:10px; padding:9px 15px 9px 20px; cursor:pointer; font-size:12px;}
+  .vendor-modus-row:hover{background:#f4f6fb;}
+  .vendor-block.expanded .vendor-modus-row{background:var(--accent-soft);}
+  .vendor-modus-row .chevron-sm{width:10px; flex-shrink:0; color:var(--text-faint); font-size:9px;}
   .vendor-modus-row .vm-name{flex:1; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .vendor-modus-row .vm-count{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-faint); min-width:64px; text-align:right; flex-shrink:0;}
   .vendor-modus-row .vm-modus{font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:3px 10px; border-radius:99px; min-width:150px; text-align:center; flex-shrink:0;}
+  .vendor-block.expanded .vm-modus{background:#fff;}
 
   /* ---- Global filter bar ---- */
   .filterbar{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:13px 14px; display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; box-shadow:var(--shadow);}
@@ -163,6 +168,29 @@
   .acc-row.lvl-armada .acc-icon{background:#fef3e2; color:#d97706;}
   .acc-row.lvl-armada.expanded{background:#fef3e2;}
   .acc-row.lvl-armada .acc-avg{color:#d97706; background:#fde8c8;}
+
+  .acc-row.lvl-pelayaran{border-left-color:#7c3aed;}
+  .acc-row.lvl-pelayaran .acc-icon{background:#f3ecfe; color:#7c3aed;}
+  .acc-row.lvl-pelayaran.expanded{background:#f3ecfe;}
+  .acc-row.lvl-pelayaran .acc-avg{color:#7c3aed; background:#e9dcfd;}
+
+  /* ---- Evaluasi ATD pivot table ---- */
+  .atd-table-wrap{overflow-x:auto; padding:6px 10px 16px;}
+  .atd-table{width:100%; border-collapse:collapse; font-size:12px; min-width:640px;}
+  .atd-table thead th{text-align:center; font-size:10px; font-weight:800; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em; padding:9px 10px; border-bottom:2px solid var(--border); white-space:nowrap;}
+  .atd-table thead th:first-child{text-align:left;}
+  .atd-table tbody tr.atd-row{cursor:pointer;}
+  .atd-table tbody tr.atd-row:hover{background:#f8f9fd;}
+  .atd-table tbody tr.atd-row.expanded{background:#f4f6fb;}
+  .atd-table td{padding:8px 10px; border-bottom:1px solid #f0f2f8; text-align:center; font-family:'JetBrains Mono',monospace; white-space:nowrap;}
+  .atd-table td.atd-total{font-weight:800; color:var(--text);}
+  .atd-name-cell{text-align:left !important; font-family:'Plus Jakarta Sans',sans-serif !important;}
+  .atd-name-cell .chevron-sm{display:inline-block; width:10px; color:var(--text-faint); font-size:9px;}
+  .atd-name-cell .acc-icon-sm{display:inline-block; margin:0 5px 0 2px;}
+  .atd-row.lvl-tujuan .atd-name-cell{font-weight:800;}
+  .atd-row.lvl-pelayaran .atd-name-cell{color:#7c3aed; font-weight:700;}
+  .atd-row.lvl-vendor .atd-name-cell{color:#16a34a; font-weight:700;}
+  .atd-leaf-note td{padding:7px 10px 12px; font-size:11px; color:var(--text-faint); font-style:italic; text-align:left; border-bottom:1px solid #f0f2f8;}
   .mini-chart-box{height:190px; padding:8px 12px 14px; position:relative;}
   .no-more{padding:10px 16px 14px; font-size:11px; color:var(--text-faint); font-style:italic;}
 
@@ -240,6 +268,7 @@
   <div class="menu-tabs" id="menuTabs">
     <button data-menu="general" class="active">📊 General</button>
     <button data-menu="detail">📋 Detail</button>
+    <button data-menu="evaluasi" id="menuTabEvaluasi" style="display:none;">🚢 Evaluasi</button>
   </div>
 
   <div class="view-container" id="viewGeneral">
@@ -335,6 +364,32 @@
     </div>
   </div>
 
+  <div class="view-container" id="viewEvaluasi" style="display:none;">
+    <div class="panel detail-toggle-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Jenis Evaluasi</h2>
+          <p class="desc">Menu ini hanya tersedia untuk moda SEA. Pilih jenis evaluasi yang ingin ditampilkan.</p>
+        </div>
+      </div>
+      <div class="detail-toggle-block">
+        <div class="menu-tabs" id="evaluasiTypeToggle">
+          <button data-eval="atd" class="active">ATD</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Evaluasi ATD — Hari Keberangkatan Kapal</h2>
+          <p class="desc">Jumlah kapal departure per hari (kolom AQ). Baris: Tujuan → klik untuk breakdown Pelayaran → klik lagi untuk breakdown Vendor.</p>
+        </div>
+      </div>
+      <div id="evalATDRoot"></div>
+    </div>
+  </div>
+
   <p style="text-align:center; font-size:11px; color:var(--text-faint); margin:4px 0 0;">Data live dari Google Sheets · Kolom Lead Time = kolom AL · Klik batang chart untuk lihat detail data</p>
 </div>
 
@@ -418,6 +473,25 @@ const IDX_AF = colLetterToIndex('AF'); // CY POO
 const IDX_AG = colLetterToIndex('AG'); // Sailing
 const IDX_AP = colLetterToIndex('AP'); // Type LC
 const IDX_A  = colLetterToIndex('A');  // Supply Site
+const IDX_V  = colLetterToIndex('V');  // Pelayaran
+const IDX_AQ = colLetterToIndex('AQ'); // ATD (hari keberangkatan kapal)
+
+const DAY_NAMES_ID = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu']; // index = JS Date.getDay()
+const DAY_ORDER_ID = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu']; // display/sort order
+
+function extractDayLabel(raw){
+  const trimmed = (raw||'').trim();
+  if(!trimmed) return '(Kosong)';
+  const lower = trimmed.toLowerCase();
+  const known = DAY_ORDER_ID.find(d => d.toLowerCase() === lower);
+  if(known) return known; // AQ already contains a day name
+  const parsed = parseDateStr(trimmed); // AQ contains a date -> derive its day name
+  if(parsed && parsed.ymd){
+    const d = new Date(parsed.ymd + 'T00:00:00');
+    if(!isNaN(d.getTime())) return DAY_NAMES_ID[d.getDay()];
+  }
+  return trimmed; // fallback: show raw value as-is
+}
 
 // ---------- State ----------
 let RECORDS = [];
@@ -445,6 +519,16 @@ let detailMetric = 'leadTime';
 let detailTypeLC = 'all';
 let detailSortMode = 'trend';
 let expandedTujuanDetail = new Set();
+let expandedVendorDetail = new Set();
+
+// ---------- Evaluasi menu state (SEA only) ----------
+let evaluasiType = 'atd';
+let expandedEvalATDPaths = new Set();
+
+const EVAL_ATD_LEVELS = ['tujuan','pelayaran','vendor'];
+const EVAL_ATD_FIELD  = { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' };
+const EVAL_ATD_ICON   = { tujuan:'🎯', pelayaran:'🚢', vendor:'🚛' };
+const EVAL_ATD_CSSLVL = { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' };
 
 const DETAIL_METRICS = {
   doorToDoor: { label:'Door to Door', field:'dtd' },
@@ -506,6 +590,8 @@ async function loadData(){
         sailingVal: toNum(row[IDX_AG]),
         cyPodVal: iYard>-1 ? toNum(row[iYard]) : null,
         typeLC: (row[IDX_AP]||'').trim().toUpperCase(),
+        pelayaran: (row[IDX_V]||'').trim() || '(Kosong)',
+        atdDay: extractDayLabel(row[IDX_AQ]),
         stuffing: iStuff>-1 ? parseDateStr(row[iStuff]) : null,
         sla: iSLA>-1 ? parseDateStr(row[iSLA]) : null,
         noSI: iNoSI>-1 ? (row[iNoSI]||'').trim() : '',
@@ -677,11 +763,17 @@ function median(arr){
   const mid = Math.floor(n/2);
   return n%2 ? s[mid] : (s[mid-1]+s[mid])/2;
 }
+function toNumericOrKeep(k){
+  const num = Number(k);
+  const isNumeric = k !== '' && k !== null && !isNaN(num) && isFinite(num);
+  return { val: isNumeric ? num : k, isNumeric };
+}
+
 function modusOf(records, field='lt'){
   const counts = {};
   records.forEach(r => { const v = r[field]; counts[v] = (counts[v]||0)+1; });
   let value=null, count=0;
-  Object.keys(counts).forEach(k => { if(counts[k]>count){ count=counts[k]; value=Number(k); } });
+  Object.keys(counts).forEach(k => { if(counts[k]>count){ count=counts[k]; value = toNumericOrKeep(k).val; } });
   return { value, count };
 }
 function statsOf(records, field='lt'){
@@ -693,10 +785,17 @@ function statsOf(records, field='lt'){
 function computePareto(records, field='lt', sort=sortMode){
   const counts = {};
   records.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
-  let entries = Object.keys(counts).map(k => ({lt:Number(k), count:counts[k]}));
+  let entries = Object.keys(counts).map(k => { const {val,isNumeric} = toNumericOrKeep(k); return { lt:val, count:counts[k], isNumeric }; });
   const total = records.length;
-  if(sort === 'trend') entries.sort((a,b)=>a.lt-b.lt);
-  else entries.sort((a,b)=>b.count-a.count || a.lt-b.lt);
+  const allNumeric = entries.every(e => e.isNumeric);
+  const allDayNames = !allNumeric && entries.every(e => DAY_ORDER_ID.includes(e.lt));
+  if(sort === 'trend'){
+    if(allNumeric) entries.sort((a,b)=>a.lt-b.lt);
+    else if(allDayNames) entries.sort((a,b)=>DAY_ORDER_ID.indexOf(a.lt)-DAY_ORDER_ID.indexOf(b.lt));
+    else entries.sort((a,b)=>String(a.lt).localeCompare(String(b.lt)));
+  } else {
+    entries.sort((a,b)=>b.count-a.count || (allNumeric ? a.lt-b.lt : String(a.lt).localeCompare(String(b.lt))));
+  }
   let cum = 0;
   entries.forEach(e => { cum += e.count; e.pct = total? (e.count/total*100):0; e.cum = total? (cum/total*100):0; });
   return entries;
@@ -731,6 +830,7 @@ function renderKPIs(records, opts={}){
 function drawChart(canvasId, entries, key, records, opts={}){
   const field = opts.field || 'lt';
   const metricLabel = opts.metricLabel || 'Lead Time';
+  const unit = opts.unit !== undefined ? opts.unit : ' hari';
   if(chartRegistry[key]){ chartRegistry[key].destroy(); delete chartRegistry[key]; }
   chartRecordsMap[key] = records || [];
   const canvas = document.getElementById(canvasId);
@@ -763,12 +863,12 @@ function drawChart(canvasId, entries, key, records, opts={}){
         const idx = elements[0].index;
         const entry = entries[idx];
         if(!entry) return;
-        openDetailModal(entry.lt, chartRecordsMap[key] || [], field, metricLabel);
+        openDetailModal(entry.lt, chartRecordsMap[key] || [], field, metricLabel, unit);
       },
       plugins:{
         legend:{position:'top', align:'end', labels:{boxWidth:9, font:{family:"'Plus Jakarta Sans'", size:10, weight:600}, usePointStyle:true, padding:8}},
         tooltip:{ backgroundColor:'#131a2b', padding:9, cornerRadius:8, titleFont:{family:"'Plus Jakarta Sans'", weight:700, size:11}, bodyFont:{family:"'JetBrains Mono'", size:11},
-          callbacks:{ title:(items)=>metricLabel+': '+items[0].label+' hari', label:(item)=> item.dataset.yAxisID==='y1' ? '% Kumulatif: '+item.parsed.y.toFixed(1)+'%' : 'Kejadian: '+item.parsed.y.toLocaleString('id-ID')+' · klik untuk detail' } }
+          callbacks:{ title:(items)=>metricLabel+': '+items[0].label+unit, label:(item)=> item.dataset.yAxisID==='y1' ? '% Kumulatif: '+item.parsed.y.toFixed(1)+'%' : 'Kejadian: '+item.parsed.y.toLocaleString('id-ID')+' · klik untuk detail' } }
       },
       scales:{
         x:{ grid:{display:false}, ticks:{font:{family:"'JetBrains Mono'", size:9.5}} },
@@ -780,9 +880,9 @@ function drawChart(canvasId, entries, key, records, opts={}){
 }
 
 // ---------- Detail modal ----------
-function openDetailModal(value, records, field='lt', metricLabel='Lead Time'){
+function openDetailModal(value, records, field='lt', metricLabel='Lead Time', unit=' hari'){
   const matches = records.filter(r => r[field] === value);
-  document.getElementById('modalTitle').textContent = `Detail Data — ${metricLabel} ${value} hari`;
+  document.getElementById('modalTitle').textContent = `Detail Data — ${metricLabel} ${value}${unit}`;
   document.getElementById('modalSub').textContent = `${matches.length.toLocaleString('id-ID')} kejadian pada nilai ${metricLabel.toLowerCase()} ini`;
   const isSea = currentModa === 'SEA';
   const headRow = document.getElementById('modalHeadRow');
@@ -801,7 +901,7 @@ function openDetailModal(value, records, field='lt', metricLabel='Lead Time'){
       <td>${r.checkout || '-'}</td>
       ${isSea ? `<td>${r.durasiPOO || '-'}</td><td>${r.sailing || '-'}</td><td>${r.yard || '-'}</td>` : ''}
       <td>${r.status || '-'}</td>
-      <td>${r[field] !== null && r[field] !== undefined ? r[field] + ' hari' : '-'}</td>
+      <td>${r[field] !== null && r[field] !== undefined ? r[field] + unit : '-'}</td>
     </tr>`).join('') || `<tr><td colspan="${isSea?12:9}" style="text-align:center; padding:20px; color:var(--text-faint);">Tidak ada data</td></tr>`;
   document.getElementById('modalFoot').textContent = matches.length > 500 ? `Menampilkan 500 dari ${matches.length.toLocaleString('id-ID')} baris — persempit filter/drill-down untuk lihat semua.` : '';
   document.getElementById('detailModal').classList.add('open');
@@ -964,7 +1064,7 @@ function renderDetailByTujuan(recs, metric){
 
   if(!tujuanList.length){
     root.innerHTML = '<div class="empty-state" style="height:110px;"><span style="font-size:20px;">📭</span>Tidak ada data</div>';
-    Object.keys(chartRegistry).forEach(k => { if(k.startsWith('detailTujuan::')){ chartRegistry[k].destroy(); delete chartRegistry[k]; } });
+    Object.keys(chartRegistry).forEach(k => { if(k.startsWith('detailTujuan::')||k.startsWith('detailVendor::')){ chartRegistry[k].destroy(); delete chartRegistry[k]; } });
     return;
   }
 
@@ -973,7 +1073,7 @@ function renderDetailByTujuan(recs, metric){
   root.innerHTML = tujuanList.map(t => {
     const s = statsOf(t.records, metric.field);
     const m = modusOf(t.records, metric.field);
-    const expanded = expandedTujuanDetail.has(t.tujuan);
+    const tujuanExpanded = expandedTujuanDetail.has(t.tujuan);
 
     const byVendor = {};
     t.records.forEach(r => { (byVendor[r.vendor] = byVendor[r.vendor] || []).push(r); });
@@ -981,26 +1081,39 @@ function renderDetailByTujuan(recs, metric){
       .map(v => ({ vendor:v, records: byVendor[v] }))
       .sort((a,b) => b.records.length - a.records.length);
 
-    const vendorRows = vendorList.map(v => {
+    const vendorBlocks = vendorList.map(v => {
       const vm = modusOf(v.records, metric.field);
-      return `<div class="vendor-modus-row">
-        <span class="vm-name">🚛 ${v.vendor}</span>
-        <span class="vm-count">${v.records.length.toLocaleString('id-ID')} trip</span>
-        <span class="vm-modus">modus ${vm.value !== null ? vm.value : '-'} hari · ${vm.count.toLocaleString('id-ID')} trip modus</span>
+      const vendorKey = t.tujuan + '||' + v.vendor;
+      const vendorExpanded = expandedVendorDetail.has(vendorKey);
+      let vendorChartHTML = '';
+      if(vendorExpanded){
+        const chartKey = 'detailVendor::' + vendorKey;
+        const canvasId = sanitizeId(chartKey);
+        chartJobs.push({ canvasId, key: chartKey, records: v.records, field: metric.field, metricLabel: metric.label });
+        vendorChartHTML = `<div class="mini-chart-box"><canvas id="${canvasId}"></canvas></div>`;
+      }
+      return `<div class="vendor-block ${vendorExpanded?'expanded':''}" data-vendorkey="${vendorKey.replace(/"/g,'&quot;')}">
+        <div class="vendor-modus-row">
+          <span class="chevron-sm">${vendorExpanded?'▾':'▸'}</span>
+          <span class="vm-name">🚛 ${v.vendor}</span>
+          <span class="vm-count">${v.records.length.toLocaleString('id-ID')} trip</span>
+          <span class="vm-modus">modus ${vm.value !== null ? vm.value : '-'} hari · ${vm.count.toLocaleString('id-ID')} trip modus</span>
+        </div>
+        ${vendorChartHTML}
       </div>`;
     }).join('');
 
     let bodyHTML = '';
-    if(expanded){
+    if(tujuanExpanded){
       const chartKey = 'detailTujuan::' + t.tujuan;
       const canvasId = sanitizeId(chartKey);
       chartJobs.push({ canvasId, key: chartKey, records: t.records, field: metric.field, metricLabel: metric.label });
-      bodyHTML = `<div class="chart-box"><canvas id="${canvasId}"></canvas></div>${vendorRows}`;
+      bodyHTML = `<div class="chart-box"><canvas id="${canvasId}"></canvas></div>${vendorBlocks}`;
     }
 
-    return `<div class="tujuan-card ${expanded?'expanded':''}" data-tujuan="${t.tujuan.replace(/"/g,'&quot;')}">
+    return `<div class="tujuan-card ${tujuanExpanded?'expanded':''}" data-tujuan="${t.tujuan.replace(/"/g,'&quot;')}">
       <div class="tujuan-card-head">
-        <span class="chevron">${expanded?'▾':'▸'}</span>
+        <span class="chevron">${tujuanExpanded?'▾':'▸'}</span>
         <span class="tc-name">🎯 ${t.tujuan}</span>
         <div class="tc-stat"><span class="tc-stat-label">Trip</span><span class="tc-stat-val">${s.total.toLocaleString('id-ID')}</span></div>
         <div class="tc-stat"><span class="tc-stat-label">Rata-rata</span><span class="tc-stat-val">${s.avg.toFixed(1)}h</span></div>
@@ -1010,16 +1123,80 @@ function renderDetailByTujuan(recs, metric){
     </div>`;
   }).join('');
 
-  // clean up mini-pareto chart instances for tujuan cards that got collapsed/removed
+  // clean up mini-pareto chart instances no longer expanded/visible
   const activeKeys = new Set(chartJobs.map(j=>j.key));
   Object.keys(chartRegistry).forEach(k => {
-    if(k.startsWith('detailTujuan::') && !activeKeys.has(k)){ chartRegistry[k].destroy(); delete chartRegistry[k]; }
+    if((k.startsWith('detailTujuan::')||k.startsWith('detailVendor::')) && !activeKeys.has(k)){ chartRegistry[k].destroy(); delete chartRegistry[k]; }
   });
 
   chartJobs.forEach(job => {
     const entries = computePareto(job.records, job.field, detailSortMode);
     drawChart(job.canvasId, entries, job.key, job.records, { field: job.field, metricLabel: job.metricLabel });
   });
+}
+
+// ---------- Evaluasi menu (SEA only): ATD breakdown Tujuan -> Pelayaran -> Vendor ----------
+function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumns){
+  const levels = EVAL_ATD_LEVELS;
+  if(levelIndex >= levels.length) return '';
+  const levelKey = levels[levelIndex];
+  const field = EVAL_ATD_FIELD[levelKey];
+  const icon = EVAL_ATD_ICON[levelKey];
+  const cssLvl = EVAL_ATD_CSSLVL[levelKey];
+  const isLeaf = levelIndex === levels.length - 1;
+  const counts = {};
+  records.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
+  let groups = Object.keys(counts).map(v => ({value:v, count:counts[v]})).sort((a,b)=>b.count-a.count);
+  if(!groups.length) return '';
+
+  let html = '';
+  groups.forEach(g => {
+    const path = [...pathValues, g.value];
+    const pathKey = path.join('||');
+    const expanded = expandedEvalATDPaths.has(pathKey);
+    const subset = records.filter(r => r[field]===g.value);
+    const indent = 10 + depth*20;
+
+    const dayCounts = {};
+    subset.forEach(r => { dayCounts[r.atdDay] = (dayCounts[r.atdDay]||0)+1; });
+
+    html += `<tr class="atd-row lvl-${cssLvl} ${expanded?'expanded':''}" data-pathkey="${pathKey.replace(/"/g,'&quot;')}">
+      <td class="atd-name-cell" style="padding-left:${indent}px">
+        <span class="chevron-sm">${expanded?'▾':'▸'}</span>
+        <span class="acc-icon-sm">${icon}</span>${g.value}
+      </td>
+      <td class="atd-total">${g.count.toLocaleString('id-ID')}</td>
+      ${dayColumns.map(d => `<td>${(dayCounts[d]||0).toLocaleString('id-ID')}</td>`).join('')}
+    </tr>`;
+
+    if(expanded){
+      const nextHTML = isLeaf ? '' : buildEvalATDTableRows(subset, levelIndex+1, path, depth+1, dayColumns);
+      html += nextHTML || `<tr class="atd-leaf-note"><td colspan="${dayColumns.length+2}" style="padding-left:${indent+20}px">— level breakdown terakhir —</td></tr>`;
+    }
+  });
+  return html;
+}
+
+function renderEvalATD(){
+  const root = document.getElementById('evalATDRoot');
+  if(!root) return;
+  if(currentModa !== 'SEA'){ root.innerHTML = ''; return; }
+  const baseRecords = getBaseRecords();
+  if(!baseRecords.length){
+    root.innerHTML = '<div class="empty-state" style="height:120px;"><span style="font-size:20px;">📭</span>Tidak ada data</div>';
+    return;
+  }
+  const hasKosong = baseRecords.some(r => r.atdDay === '(Kosong)');
+  const dayColumns = hasKosong ? [...DAY_ORDER_ID, '(Kosong)'] : DAY_ORDER_ID;
+  const bodyHTML = buildEvalATDTableRows(baseRecords, 0, [], 0, dayColumns);
+  root.innerHTML = `<div class="atd-table-wrap"><table class="atd-table">
+    <thead><tr>
+      <th>Tujuan / Pelayaran / Vendor</th>
+      <th>Total</th>
+      ${dayColumns.map(d => `<th>${d}</th>`).join('')}
+    </tr></thead>
+    <tbody>${bodyHTML}</tbody>
+  </table></div>`;
 }
 
 function renderAll(){
@@ -1029,15 +1206,36 @@ function renderAll(){
   renderTree();
   updateFilterCount();
   renderDetail();
+  renderEvalATD();
 }
 
 // ---------- Events ----------
+function setActiveMenuTab(menuName){
+  document.querySelectorAll('#menuTabs button[data-menu]').forEach(b => b.classList.toggle('active', b.dataset.menu === menuName));
+  document.getElementById('viewGeneral').style.display = menuName === 'general' ? 'flex' : 'none';
+  document.getElementById('viewDetail').style.display = menuName === 'detail' ? 'flex' : 'none';
+  document.getElementById('viewEvaluasi').style.display = menuName === 'evaluasi' ? 'flex' : 'none';
+  if(menuName === 'detail') renderDetail(); // redraw so canvases size correctly now that they're visible
+  if(menuName === 'evaluasi') renderEvalATD();
+}
+
 document.getElementById('modaSwitch').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-moda]'); if(!btn) return;
   currentModa = btn.dataset.moda;
   document.querySelectorAll('#modaSwitch button').forEach(b => b.classList.toggle('active', b===btn));
   expandedPaths = new Set();
   expandedTujuanDetail = new Set();
+  expandedVendorDetail = new Set();
+  expandedEvalATDPaths = new Set();
+
+  const evalTabBtn = document.getElementById('menuTabEvaluasi');
+  if(currentModa === 'SEA'){
+    evalTabBtn.style.display = '';
+  } else {
+    const wasOnEvaluasi = evalTabBtn.classList.contains('active');
+    evalTabBtn.style.display = 'none';
+    if(wasOnEvaluasi) setActiveMenuTab('general'); // fallback: don't leave user on a hidden tab
+  }
   renderAll();
 });
 
@@ -1051,12 +1249,22 @@ document.getElementById('sortToggle').addEventListener('click', (e) => {
 document.getElementById('refreshBtn').addEventListener('click', loadData);
 
 document.getElementById('menuTabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-menu]'); if(!btn) return;
-  document.querySelectorAll('#menuTabs button').forEach(b => b.classList.toggle('active', b===btn));
-  const isDetail = btn.dataset.menu === 'detail';
-  document.getElementById('viewGeneral').style.display = isDetail ? 'none' : 'flex';
-  document.getElementById('viewDetail').style.display = isDetail ? 'flex' : 'none';
-  if(isDetail) renderDetail(); // redraw so the chart canvas sizes correctly now that it's visible
+  const btn = e.target.closest('button[data-menu]'); if(!btn || btn.disabled || btn.style.display==='none') return;
+  setActiveMenuTab(btn.dataset.menu);
+});
+
+document.getElementById('evaluasiTypeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-eval]'); if(!btn) return;
+  evaluasiType = btn.dataset.eval;
+  document.querySelectorAll('#evaluasiTypeToggle button').forEach(b => b.classList.toggle('active', b===btn));
+  renderEvalATD();
+});
+
+document.getElementById('evalATDRoot').addEventListener('click', (e) => {
+  const row = e.target.closest('.atd-row'); if(!row) return;
+  const key = row.dataset.pathkey;
+  if(expandedEvalATDPaths.has(key)) expandedEvalATDPaths.delete(key); else expandedEvalATDPaths.add(key);
+  renderEvalATD();
 });
 
 document.getElementById('detailMetricToggle').addEventListener('click', (e) => {
@@ -1081,7 +1289,17 @@ document.getElementById('sortToggleDetail').addEventListener('click', (e) => {
 });
 
 document.getElementById('detailByTujuanRoot').addEventListener('click', (e) => {
-  const card = e.target.closest('.tujuan-card'); if(!card) return;
+  const vendorRow = e.target.closest('.vendor-modus-row');
+  if(vendorRow){
+    const block = vendorRow.closest('.vendor-block');
+    const key = block.dataset.vendorkey;
+    if(expandedVendorDetail.has(key)) expandedVendorDetail.delete(key); else expandedVendorDetail.add(key);
+    renderDetail();
+    return;
+  }
+  const head = e.target.closest('.tujuan-card-head');
+  if(!head) return;
+  const card = head.closest('.tujuan-card');
   const key = card.dataset.tujuan;
   if(expandedTujuanDetail.has(key)) expandedTujuanDetail.delete(key); else expandedTujuanDetail.add(key);
   renderDetail();
