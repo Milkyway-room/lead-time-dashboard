@@ -191,6 +191,12 @@
   .atd-row.lvl-pelayaran .atd-name-cell{color:#7c3aed; font-weight:700;}
   .atd-row.lvl-vendor .atd-name-cell{color:#16a34a; font-weight:700;}
   .atd-leaf-note td{padding:7px 10px 12px; font-size:11px; color:var(--text-faint); font-style:italic; text-align:left; border-bottom:1px solid #f0f2f8;}
+  .atd-table td.atd-top1{background:#fef3c7; color:#92400e; font-weight:800; position:relative;}
+  .atd-table td.atd-top2{background:#eef1f8; color:#334155; font-weight:800;}
+  .atd-table td.atd-top3{background:#ffe8d1; color:#9a3412; font-weight:700;}
+  .atd-table td.atd-top1::after{content:'🥇'; font-size:9px; margin-left:4px; vertical-align:middle;}
+  .atd-table td.atd-top2::after{content:'🥈'; font-size:9px; margin-left:4px; vertical-align:middle;}
+  .atd-table td.atd-top3::after{content:'🥉'; font-size:9px; margin-left:4px; vertical-align:middle;}
   .mini-chart-box{height:190px; padding:8px 12px 14px; position:relative;}
   .no-more{padding:10px 16px 14px; font-size:11px; color:var(--text-faint); font-style:italic;}
 
@@ -383,7 +389,7 @@
       <div class="panel-head">
         <div>
           <h2>Evaluasi ATD — Hari Keberangkatan Kapal</h2>
-          <p class="desc">Jumlah kapal departure per hari (kolom AQ). Baris: Tujuan → klik untuk breakdown Pelayaran → klik lagi untuk breakdown Vendor.</p>
+          <p class="desc">Jumlah kapal departure per hari (kolom AQ). Baris: Tujuan → klik untuk breakdown Pelayaran → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari terbanyak di tiap baris.</p>
         </div>
         <div class="sort-toggle" id="evalATDViewToggle">
           <button data-view="numeric" class="active">Angka</button>
@@ -1171,6 +1177,15 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
     const dayCounts = {};
     subset.forEach(r => { dayCounts[r.atdDay] = (dayCounts[r.atdDay]||0)+1; });
 
+    // rank the top 3 days (by count) within this row, so highlight matches regardless of Angka/Persentase mode
+    const rankedDays = dayColumns
+      .map(d => ({ d, c: dayCounts[d]||0 }))
+      .filter(e => e.c > 0)
+      .sort((a,b) => b.c-a.c)
+      .slice(0, 3);
+    const rankOf = {};
+    rankedDays.forEach((e, i) => { rankOf[e.d] = i+1; });
+
     html += `<tr class="atd-row lvl-${cssLvl} ${expanded?'expanded':''}" data-pathkey="${pathKey.replace(/"/g,'&quot;')}">
       <td class="atd-name-cell" style="padding-left:${indent}px">
         <span class="chevron-sm">${expanded?'▾':'▸'}</span>
@@ -1182,7 +1197,8 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
         const cellText = evalATDViewMode === 'percent'
           ? (g.count ? (c/g.count*100).toFixed(1)+'%' : '-')
           : c.toLocaleString('id-ID');
-        return `<td>${cellText}</td>`;
+        const rankClass = rankOf[d] ? ' atd-top'+rankOf[d] : '';
+        return `<td class="${rankClass}">${cellText}</td>`;
       }).join('')}
     </tr>`;
 
