@@ -385,6 +385,10 @@
           <h2>Evaluasi ATD — Hari Keberangkatan Kapal</h2>
           <p class="desc">Jumlah kapal departure per hari (kolom AQ). Baris: Tujuan → klik untuk breakdown Pelayaran → klik lagi untuk breakdown Vendor.</p>
         </div>
+        <div class="sort-toggle" id="evalATDViewToggle">
+          <button data-view="numeric" class="active">Angka</button>
+          <button data-view="percent">Persentase</button>
+        </div>
       </div>
       <div id="evalATDRoot"></div>
     </div>
@@ -530,6 +534,7 @@ let expandedVendorDetail = new Set();
 // ---------- Evaluasi menu state (SEA only) ----------
 let evaluasiType = 'atd';
 let expandedEvalATDPaths = new Set();
+let evalATDViewMode = 'numeric'; // 'numeric' | 'percent'
 
 const EVAL_ATD_LEVELS = ['tujuan','pelayaran','vendor'];
 const EVAL_ATD_FIELD  = { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' };
@@ -1172,7 +1177,13 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
         <span class="acc-icon-sm">${icon}</span>${g.value}
       </td>
       <td class="atd-total">${g.count.toLocaleString('id-ID')}</td>
-      ${dayColumns.map(d => `<td>${(dayCounts[d]||0).toLocaleString('id-ID')}</td>`).join('')}
+      ${dayColumns.map(d => {
+        const c = dayCounts[d]||0;
+        const cellText = evalATDViewMode === 'percent'
+          ? (g.count ? (c/g.count*100).toFixed(1)+'%' : '-')
+          : c.toLocaleString('id-ID');
+        return `<td>${cellText}</td>`;
+      }).join('')}
     </tr>`;
 
     if(expanded){
@@ -1263,6 +1274,13 @@ document.getElementById('evaluasiTypeToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-eval]'); if(!btn) return;
   evaluasiType = btn.dataset.eval;
   document.querySelectorAll('#evaluasiTypeToggle button').forEach(b => b.classList.toggle('active', b===btn));
+  renderEvalATD();
+});
+
+document.getElementById('evalATDViewToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-view]'); if(!btn) return;
+  evalATDViewMode = btn.dataset.view;
+  document.querySelectorAll('#evalATDViewToggle button').forEach(b => b.classList.toggle('active', b===btn));
   renderEvalATD();
 });
 
