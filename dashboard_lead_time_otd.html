@@ -479,13 +479,19 @@ const IDX_AQ = colLetterToIndex('AQ'); // ATD (hari keberangkatan kapal)
 const DAY_NAMES_ID = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu']; // index = JS Date.getDay()
 const DAY_ORDER_ID = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu']; // display/sort order
 
+const ENG_DAY_MAP = {
+  mon:'Senin', tue:'Selasa', wed:'Rabu', thu:'Kamis', fri:'Jumat', sat:'Sabtu', sun:'Minggu',
+  monday:'Senin', tuesday:'Selasa', wednesday:'Rabu', thursday:'Kamis', friday:'Jumat', saturday:'Sabtu', sunday:'Minggu'
+};
+
 function extractDayLabel(raw){
   const trimmed = (raw||'').trim();
   if(!trimmed) return '(Kosong)';
   const lower = trimmed.toLowerCase();
   const known = DAY_ORDER_ID.find(d => d.toLowerCase() === lower);
-  if(known) return known; // AQ already contains a day name
-  const parsed = parseDateStr(trimmed); // AQ contains a date -> derive its day name
+  if(known) return known; // AQ already contains an Indonesian day name
+  if(ENG_DAY_MAP[lower]) return ENG_DAY_MAP[lower]; // AQ contains an English day name/abbreviation (Mon, Tue, ...)
+  const parsed = parseDateStr(trimmed); // AQ contains a full date -> derive its day name
   if(parsed && parsed.ymd){
     const d = new Date(parsed.ymd + 'T00:00:00');
     if(!isNaN(d.getTime())) return DAY_NAMES_ID[d.getDay()];
