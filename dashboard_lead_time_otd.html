@@ -328,7 +328,7 @@
       <div class="panel-head">
         <div>
           <h2 id="detailByTujuanTitle">Detail per Tujuan — Door to Yard</h2>
-          <p class="desc">KPI per tujuan sesuai filter aktif. Klik salah satu tujuan untuk lihat modus tiap vendor.</p>
+          <p class="desc">KPI per tujuan sesuai filter aktif. Klik salah satu tujuan untuk lihat pareto & modus tiap vendor.</p>
         </div>
       </div>
       <div class="tujuan-grid" id="detailByTujuanRoot"></div>
@@ -964,8 +964,11 @@ function renderDetailByTujuan(recs, metric){
 
   if(!tujuanList.length){
     root.innerHTML = '<div class="empty-state" style="height:110px;"><span style="font-size:20px;">📭</span>Tidak ada data</div>';
+    Object.keys(chartRegistry).forEach(k => { if(k.startsWith('detailTujuan::')){ chartRegistry[k].destroy(); delete chartRegistry[k]; } });
     return;
   }
+
+  const chartJobs = [];
 
   root.innerHTML = tujuanList.map(t => {
     const s = statsOf(t.records, metric.field);
@@ -987,6 +990,14 @@ function renderDetailByTujuan(recs, metric){
       </div>`;
     }).join('');
 
+    let bodyHTML = '';
+    if(expanded){
+      const chartKey = 'detailTujuan::' + t.tujuan;
+      const canvasId = sanitizeId(chartKey);
+      chartJobs.push({ canvasId, key: chartKey, records: t.records, field: metric.field, metricLabel: metric.label });
+      bodyHTML = `<div class="chart-box"><canvas id="${canvasId}"></canvas></div>${vendorRows}`;
+    }
+
     return `<div class="tujuan-card ${expanded?'expanded':''}" data-tujuan="${t.tujuan.replace(/"/g,'&quot;')}">
       <div class="tujuan-card-head">
         <span class="chevron">${expanded?'▾':'▸'}</span>
@@ -995,9 +1006,20 @@ function renderDetailByTujuan(recs, metric){
         <div class="tc-stat"><span class="tc-stat-label">Rata-rata</span><span class="tc-stat-val">${s.avg.toFixed(1)}h</span></div>
         <div class="tc-stat"><span class="tc-stat-label">Modus</span><span class="tc-stat-val">${m.value !== null ? m.value : '-'}h</span><span class="tc-stat-sub">${m.count.toLocaleString('id-ID')} trip modus</span></div>
       </div>
-      <div class="tujuan-card-body">${vendorRows}</div>
+      <div class="tujuan-card-body">${bodyHTML}</div>
     </div>`;
   }).join('');
+
+  // clean up mini-pareto chart instances for tujuan cards that got collapsed/removed
+  const activeKeys = new Set(chartJobs.map(j=>j.key));
+  Object.keys(chartRegistry).forEach(k => {
+    if(k.startsWith('detailTujuan::') && !activeKeys.has(k)){ chartRegistry[k].destroy(); delete chartRegistry[k]; }
+  });
+
+  chartJobs.forEach(job => {
+    const entries = computePareto(job.records, job.field, detailSortMode);
+    drawChart(job.canvasId, entries, job.key, job.records, { field: job.field, metricLabel: job.metricLabel });
+  });
 }
 
 function renderAll(){
