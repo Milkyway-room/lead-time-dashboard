@@ -198,6 +198,14 @@
   .atd-table td.atd-top1::after{content:'🥇'; font-size:9px; margin-left:4px; vertical-align:middle;}
   .atd-table td.atd-top2::after{content:'🥈'; font-size:9px; margin-left:4px; vertical-align:middle;}
   .atd-table td.atd-top3::after{content:'🥉'; font-size:9px; margin-left:4px; vertical-align:middle;}
+  .atd-table td[data-tip]{position:relative; cursor:help; border-bottom-style:dashed; border-bottom-color:#94a3b8;}
+  .atd-table td[data-tip]:hover::before{
+    content:attr(data-tip);
+    position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    background:#131a2b; color:#fff; padding:4px 9px; border-radius:6px;
+    font-size:10px; font-weight:700; font-family:'JetBrains Mono',monospace;
+    white-space:nowrap; z-index:30; margin-bottom:5px; box-shadow:0 4px 12px rgba(0,0,0,.25);
+  }
   .mini-chart-box{height:190px; padding:8px 12px 14px; position:relative;}
   .no-more{padding:10px 16px 14px; font-size:11px; color:var(--text-faint); font-style:italic;}
 
@@ -1237,7 +1245,22 @@ function renderDetailByTujuan(recs, metric){
 }
 
 // ---------- Evaluasi menu (SEA only): ATD breakdown Tujuan -> Pelayaran -> Vendor ----------
-function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, depth, dayColumns, dayOccurrences){
+// Distributes `target` (an integer) across `exacts` as integers that sum to exactly `target`,
+// starting from each value's floor and bumping the entries with the largest fractional remainder first.
+// This keeps every level's own value as accurate as possible while guaranteeing its children sum to it exactly.
+function largestRemainderReconcile(target, exacts){
+  const floors = exacts.map(v => Math.floor(v));
+  const rems = exacts.map((v,i) => ({ i, r: v - floors[i] }));
+  let deficit = target - floors.reduce((a,b)=>a+b,0);
+  const result = [...floors];
+  if(deficit > 0){
+    const order = [...rems].sort((a,b) => b.r - a.r);
+    for(let k=0; k<order.length && deficit>0; k++){ result[order[k].i] += 1; deficit--; }
+  }
+  return result;
+}
+
+function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, depth, dayColumns, dayOccurrences, targetDayVals){
   const levels = cfg.levels;
   if(levelIndex >= levels.length) return '';
   const levelKey = levels[levelIndex];
@@ -1251,32 +1274,53 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
   let groups = Object.keys(counts).map(v => ({value:v, count:counts[v]})).sort((a,b)=>b.count-a.count);
   if(!groups.length) return '';
 
-  let html = '';
+  // Pass 1: each group's subset + exact (unrounded) day values
   groups.forEach(g => {
-    const path = [...pathValues, g.value];
-    const pathKey = path.join('||');
-    const expanded = expandedSet.has(pathKey);
-    const subset = records.filter(r => r[field]===g.value);
-    const indent = 10 + depth*20;
-
+    g.subset = records.filter(r => r[field]===g.value);
     const dayCounts = {};
-    subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0)+1; });
-
-    // Value to display/rank per day column. 'count' mode (ATD): raw count, unchanged.
-    // 'avgPerOccurrence' mode (Armada-Stuffing): total kejadian / jumlah kemunculan hari itu dalam time frame.
-    // '(Kosong)' (missing date) never has a weekday occurrence count, so it always shows a raw count.
-    const dayVals = {};
+    g.subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0)+1; });
+    g.dayVals = {};
     dayColumns.forEach(d => {
       if(isAvgMode && d !== '(Kosong)'){
         const occ = dayOccurrences ? (dayOccurrences[d]||0) : 0;
-        dayVals[d] = occ > 0 ? (dayCounts[d]||0)/occ : null;
+        g.dayVals[d] = occ > 0 ? (dayCounts[d]||0)/occ : null;
       } else {
-        dayVals[d] = dayCounts[d]||0;
+        g.dayVals[d] = dayCounts[d]||0;
       }
     });
+  });
+
+  // Pass 2 (avg mode only): decide each group's DISPLAYED integer per day.
+  // Top level (no target passed down): each row rounds independently — most accurate, nothing to reconcile against.
+  // Deeper levels (target = the parent's own displayed value, already visible above): reconcile via largest-remainder
+  // so these children sum exactly to that visible parent number, without cascading distortion further up the tree.
+  const displayedVal = {};
+  groups.forEach((g,i) => { displayedVal[i] = {}; });
+  if(isAvgMode){
+    dayColumns.forEach(d => {
+      if(d === '(Kosong)') return;
+      const hasTarget = targetDayVals && targetDayVals[d] !== null && targetDayVals[d] !== undefined;
+      if(!hasTarget){
+        groups.forEach((g,i) => { displayedVal[i][d] = (g.dayVals[d]===null) ? null : Math.round(g.dayVals[d]); });
+        return;
+      }
+      const exacts = groups.map(g => g.dayVals[d] || 0);
+      const reconciled = largestRemainderReconcile(targetDayVals[d], exacts);
+      groups.forEach((g,i) => { displayedVal[i][d] = reconciled[i]; });
+    });
+  }
+
+  let html = '';
+  groups.forEach((g, gi) => {
+    const path = [...pathValues, g.value];
+    const pathKey = path.join('||');
+    const expanded = expandedSet.has(pathKey);
+    const subset = g.subset;
+    const indent = 10 + depth*20;
+    const dayVals = g.dayVals;
     const sumRealVals = dayColumns.filter(d=>d!=='(Kosong)').reduce((s,d) => s + (dayVals[d]||0), 0);
 
-    // rank the top 3 days within this row, based on whichever value is being displayed
+    // rank the top 3 days within this row, based on the exact (unrounded) value — accuracy of ranking shouldn't depend on display rounding
     const rankPool = isAvgMode ? dayColumns.filter(d => d !== '(Kosong)') : dayColumns;
     const rankedDays = rankPool
       .map(d => ({ d, v: dayVals[d] }))
@@ -1285,6 +1329,8 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
       .slice(0, 3);
     const rankOf = {};
     rankedDays.forEach((e, i) => { rankOf[e.d] = i+1; });
+
+    const childTarget = {}; // this row's own displayed values, passed down as the reconciliation target for its children
 
     html += `<tr class="atd-row lvl-${cssLvl} ${expanded?'expanded':''}" data-pathkey="${pathKey.replace(/"/g,'&quot;')}">
       <td class="atd-name-cell" style="padding-left:${indent}px">
@@ -1295,22 +1341,33 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
       ${dayColumns.map(d => {
         const v = dayVals[d];
         const isKosongCol = d === '(Kosong)';
-        let cellText;
+        let cellText, tip = '';
         if(v === null){
           cellText = '-';
         } else if(evalViewMode === 'percent'){
           const denom = isAvgMode ? (isKosongCol ? g.count : sumRealVals) : g.count;
-          cellText = denom ? (v/denom*100).toFixed(1)+'%' : '-';
+          if(!denom){ cellText = '-'; }
+          else {
+            const pct = v/denom*100;
+            if(isAvgMode && !isKosongCol){ cellText = Math.round(pct)+'%'; tip = pct.toFixed(2)+'%'; }
+            else { cellText = pct.toFixed(1)+'%'; }
+          }
+        } else if(isAvgMode && !isKosongCol){
+          const dv = displayedVal[gi][d];
+          cellText = dv.toLocaleString('id-ID');
+          tip = v.toFixed(2);
+          childTarget[d] = dv;
         } else {
-          cellText = (isAvgMode && !isKosongCol) ? v.toFixed(1) : v.toLocaleString('id-ID');
+          cellText = v.toLocaleString('id-ID');
         }
         const rankClass = rankOf[d] ? ' atd-top'+rankOf[d] : '';
-        return `<td class="${rankClass}">${cellText}</td>`;
+        const tipAttr = tip ? ` data-tip="${tip}"` : '';
+        return `<td class="${rankClass}"${tipAttr}>${cellText}</td>`;
       }).join('')}
     </tr>`;
 
     if(expanded){
-      const nextHTML = isLeaf ? '' : buildEvalTableRows(cfg, expandedSet, subset, levelIndex+1, path, depth+1, dayColumns, dayOccurrences);
+      const nextHTML = isLeaf ? '' : buildEvalTableRows(cfg, expandedSet, subset, levelIndex+1, path, depth+1, dayColumns, dayOccurrences, isAvgMode ? childTarget : null);
       html += nextHTML || `<tr class="atd-leaf-note"><td colspan="${dayColumns.length+2}" style="padding-left:${indent+20}px">— level breakdown terakhir —</td></tr>`;
     }
   });
