@@ -405,7 +405,18 @@
       <div class="panel-head">
         <div>
           <h2>Evaluasi Armada — Berdasarkan Tanggal Stuffing</h2>
-          <p class="desc">Jumlah shipment per hari berdasarkan Req Stuffing (kolom I). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari terbanyak di tiap baris.</p>
+          <p class="desc">Rata-rata kebutuhan armada per hari (total kejadian ÷ jumlah kemunculan hari itu dalam rentang tanggal Req Stuffing terpilih). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari tertinggi di tiap baris.</p>
+        </div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="menu-tabs" id="evalArmadaTypeLCToggle">
+          <button data-lc="all" class="active">Semua</button>
+          <button data-lc="storeDK">Store DK</button>
+          <button data-lc="cust">Cust</button>
+          <button data-lc="hub">Hub</button>
+          <button data-lc="storeLK">Store LK</button>
+          <button data-lc="transferStock">Transfer Stock</button>
+          <button data-lc="satelit">Satelit</button>
         </div>
       </div>
       <div id="evalArmadaRoot"></div>
@@ -512,6 +523,39 @@ function dayFromYmd(ymd){
   return isNaN(d.getTime()) ? '(Kosong)' : DAY_NAMES_ID[d.getDay()];
 }
 
+// Time frame = the explicit Stuffing-date filter if set, else the actual min/max Stuffing date within the given records.
+function getEvalTimeFrame(records){
+  let minYmd = null, maxYmd = null;
+  records.forEach(r => {
+    const ymd = r.stuffing && r.stuffing.ymd;
+    if(!ymd) return;
+    if(!minYmd || ymd < minYmd) minYmd = ymd;
+    if(!maxYmd || ymd > maxYmd) maxYmd = ymd;
+  });
+  const start = filters.stuffFrom || minYmd;
+  const end = filters.stuffTo || maxYmd;
+  if(!start || !end) return null;
+  return { start, end };
+}
+
+// Counts how many times each weekday (Senin..Minggu) occurs within [start, end] inclusive.
+function countWeekdayOccurrences(startYmd, endYmd){
+  const occ = {};
+  DAY_ORDER_ID.forEach(d => occ[d] = 0);
+  const start = new Date(startYmd + 'T00:00:00');
+  const end = new Date(endYmd + 'T00:00:00');
+  if(isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return occ;
+  let cur = new Date(start);
+  let guard = 0;
+  while(cur <= end && guard < 20000){
+    const dayName = DAY_NAMES_ID[cur.getDay()];
+    if(occ[dayName] !== undefined) occ[dayName]++;
+    cur.setDate(cur.getDate()+1);
+    guard++;
+  }
+  return occ;
+}
+
 function extractDayLabel(raw){
   const trimmed = (raw||'').trim();
   if(!trimmed) return '(Kosong)';
@@ -559,12 +603,14 @@ let expandedVendorDetail = new Set();
 let evaluasiType = 'atd';
 let evalViewMode = 'numeric'; // 'numeric' | 'percent'
 let expandedEvalPaths = { atd: new Set(), armadaStuffing: new Set() };
+let evalArmadaTypeLC = 'all'; // Type LC filter local to the Armada-by-Stuffing panel
 
 const EVAL_TYPES = {
   atd: {
     moda: 'SEA',
     headerLabel: 'Tujuan / Pelayaran / Vendor',
     dayField: 'atdDay',
+    valueMode: 'count', // raw count of trips per day
     levels: ['tujuan','pelayaran','vendor'],
     levelField: { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' },
     levelIcon:  { tujuan:'🎯', pelayaran:'🚢', vendor:'🚛' },
@@ -574,6 +620,7 @@ const EVAL_TYPES = {
     moda: 'LAND',
     headerLabel: 'Tujuan / Armada / Vendor',
     dayField: 'stuffDay',
+    valueMode: 'avgPerOccurrence', // total trips on that weekday / how many times that weekday occurred in the selected time frame
     levels: ['tujuan','armada','vendor'],
     levelField: { tujuan:'tujuan', armada:'armada', vendor:'vendor' },
     levelIcon:  { tujuan:'🎯', armada:'🔧', vendor:'🚛' },
@@ -1190,7 +1237,7 @@ function renderDetailByTujuan(recs, metric){
 }
 
 // ---------- Evaluasi menu (SEA only): ATD breakdown Tujuan -> Pelayaran -> Vendor ----------
-function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, depth, dayColumns){
+function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, depth, dayColumns, dayOccurrences){
   const levels = cfg.levels;
   if(levelIndex >= levels.length) return '';
   const levelKey = levels[levelIndex];
@@ -1198,6 +1245,7 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
   const icon = cfg.levelIcon[levelKey];
   const cssLvl = cfg.levelCss[levelKey];
   const isLeaf = levelIndex === levels.length - 1;
+  const isAvgMode = cfg.valueMode === 'avgPerOccurrence';
   const counts = {};
   records.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
   let groups = Object.keys(counts).map(v => ({value:v, count:counts[v]})).sort((a,b)=>b.count-a.count);
@@ -1214,11 +1262,26 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
     const dayCounts = {};
     subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0)+1; });
 
-    // rank the top 3 days (by count) within this row, so highlight matches regardless of Angka/Persentase mode
-    const rankedDays = dayColumns
-      .map(d => ({ d, c: dayCounts[d]||0 }))
-      .filter(e => e.c > 0)
-      .sort((a,b) => b.c-a.c)
+    // Value to display/rank per day column. 'count' mode (ATD): raw count, unchanged.
+    // 'avgPerOccurrence' mode (Armada-Stuffing): total kejadian / jumlah kemunculan hari itu dalam time frame.
+    // '(Kosong)' (missing date) never has a weekday occurrence count, so it always shows a raw count.
+    const dayVals = {};
+    dayColumns.forEach(d => {
+      if(isAvgMode && d !== '(Kosong)'){
+        const occ = dayOccurrences ? (dayOccurrences[d]||0) : 0;
+        dayVals[d] = occ > 0 ? (dayCounts[d]||0)/occ : null;
+      } else {
+        dayVals[d] = dayCounts[d]||0;
+      }
+    });
+    const sumRealVals = dayColumns.filter(d=>d!=='(Kosong)').reduce((s,d) => s + (dayVals[d]||0), 0);
+
+    // rank the top 3 days within this row, based on whichever value is being displayed
+    const rankPool = isAvgMode ? dayColumns.filter(d => d !== '(Kosong)') : dayColumns;
+    const rankedDays = rankPool
+      .map(d => ({ d, v: dayVals[d] }))
+      .filter(e => e.v !== null && e.v > 0)
+      .sort((a,b) => b.v-a.v)
       .slice(0, 3);
     const rankOf = {};
     rankedDays.forEach((e, i) => { rankOf[e.d] = i+1; });
@@ -1230,17 +1293,24 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
       </td>
       <td class="atd-total">${g.count.toLocaleString('id-ID')}</td>
       ${dayColumns.map(d => {
-        const c = dayCounts[d]||0;
-        const cellText = evalViewMode === 'percent'
-          ? (g.count ? (c/g.count*100).toFixed(1)+'%' : '-')
-          : c.toLocaleString('id-ID');
+        const v = dayVals[d];
+        const isKosongCol = d === '(Kosong)';
+        let cellText;
+        if(v === null){
+          cellText = '-';
+        } else if(evalViewMode === 'percent'){
+          const denom = isAvgMode ? (isKosongCol ? g.count : sumRealVals) : g.count;
+          cellText = denom ? (v/denom*100).toFixed(1)+'%' : '-';
+        } else {
+          cellText = (isAvgMode && !isKosongCol) ? v.toFixed(1) : v.toLocaleString('id-ID');
+        }
         const rankClass = rankOf[d] ? ' atd-top'+rankOf[d] : '';
         return `<td class="${rankClass}">${cellText}</td>`;
       }).join('')}
     </tr>`;
 
     if(expanded){
-      const nextHTML = isLeaf ? '' : buildEvalTableRows(cfg, expandedSet, subset, levelIndex+1, path, depth+1, dayColumns);
+      const nextHTML = isLeaf ? '' : buildEvalTableRows(cfg, expandedSet, subset, levelIndex+1, path, depth+1, dayColumns, dayOccurrences);
       html += nextHTML || `<tr class="atd-leaf-note"><td colspan="${dayColumns.length+2}" style="padding-left:${indent+20}px">— level breakdown terakhir —</td></tr>`;
     }
   });
@@ -1252,14 +1322,30 @@ function renderEvalTable(typeKey, rootId){
   const root = document.getElementById(rootId);
   if(!root || !cfg) return;
   if(currentModa !== cfg.moda){ root.innerHTML = ''; return; }
-  const baseRecords = getBaseRecords();
+  let baseRecords = getBaseRecords();
+
+  // panel-local Type LC filter (currently only exposed on the Armada-by-Stuffing panel)
+  if(typeKey === 'armadaStuffing'){
+    const lcGroup = TYPE_LC_GROUPS[evalArmadaTypeLC];
+    if(lcGroup && lcGroup.letters){
+      baseRecords = baseRecords.filter(r => lcGroup.letters.includes(r.typeLC));
+    }
+  }
+
   if(!baseRecords.length){
     root.innerHTML = '<div class="empty-state" style="height:120px;"><span style="font-size:20px;">📭</span>Tidak ada data</div>';
     return;
   }
+
+  let dayOccurrences = null;
+  if(cfg.valueMode === 'avgPerOccurrence'){
+    const timeFrame = getEvalTimeFrame(baseRecords);
+    dayOccurrences = timeFrame ? countWeekdayOccurrences(timeFrame.start, timeFrame.end) : {};
+  }
+
   const hasKosong = baseRecords.some(r => r[cfg.dayField] === '(Kosong)');
   const dayColumns = hasKosong ? [...DAY_ORDER_ID, '(Kosong)'] : DAY_ORDER_ID;
-  const bodyHTML = buildEvalTableRows(cfg, expandedEvalPaths[typeKey], baseRecords, 0, [], 0, dayColumns);
+  const bodyHTML = buildEvalTableRows(cfg, expandedEvalPaths[typeKey], baseRecords, 0, [], 0, dayColumns, dayOccurrences);
   root.innerHTML = `<div class="atd-table-wrap"><table class="atd-table">
     <thead><tr>
       <th>${cfg.headerLabel}</th>
@@ -1365,6 +1451,13 @@ document.getElementById('evalArmadaRoot').addEventListener('click', (e) => {
   const key = row.dataset.pathkey;
   const set = expandedEvalPaths.armadaStuffing;
   if(set.has(key)) set.delete(key); else set.add(key);
+  renderEvaluasiMenu();
+});
+
+document.getElementById('evalArmadaTypeLCToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-lc]'); if(!btn) return;
+  evalArmadaTypeLC = btn.dataset.lc;
+  document.querySelectorAll('#evalArmadaTypeLCToggle button').forEach(b => b.classList.toggle('active', b===btn));
   renderEvaluasiMenu();
 });
 
