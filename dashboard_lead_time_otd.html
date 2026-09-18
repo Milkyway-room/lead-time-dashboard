@@ -190,6 +190,7 @@
   .atd-row.lvl-tujuan .atd-name-cell{font-weight:800;}
   .atd-row.lvl-pelayaran .atd-name-cell{color:#7c3aed; font-weight:700;}
   .atd-row.lvl-vendor .atd-name-cell{color:#16a34a; font-weight:700;}
+  .atd-row.lvl-armada .atd-name-cell{color:#d97706; font-weight:700;}
   .atd-leaf-note td{padding:7px 10px 12px; font-size:11px; color:var(--text-faint); font-style:italic; text-align:left; border-bottom:1px solid #f0f2f8;}
   .atd-table td.atd-top1{background:#fef3c7; color:#92400e; font-weight:800; position:relative;}
   .atd-table td.atd-top2{background:#eef1f8; color:#334155; font-weight:800;}
@@ -274,7 +275,7 @@
   <div class="menu-tabs" id="menuTabs">
     <button data-menu="general" class="active">📊 General</button>
     <button data-menu="detail">📋 Detail</button>
-    <button data-menu="evaluasi" id="menuTabEvaluasi" style="display:none;">🚢 Evaluasi</button>
+    <button data-menu="evaluasi" id="menuTabEvaluasi">🧭 Evaluasi</button>
   </div>
 
   <div class="view-container" id="viewGeneral">
@@ -375,28 +376,39 @@
       <div class="panel-head">
         <div>
           <h2>Jenis Evaluasi</h2>
-          <p class="desc">Menu ini hanya tersedia untuk moda SEA. Pilih jenis evaluasi yang ingin ditampilkan.</p>
+          <p class="desc">Jenis evaluasi yang tersedia mengikuti moda aktif (LAND/SEA).</p>
+        </div>
+        <div class="sort-toggle" id="evalViewToggle">
+          <button data-view="numeric" class="active">Angka</button>
+          <button data-view="percent">Persentase</button>
         </div>
       </div>
       <div class="detail-toggle-block">
         <div class="menu-tabs" id="evaluasiTypeToggle">
-          <button data-eval="atd" class="active">ATD</button>
+          <button data-eval="atd" data-moda="SEA" class="active">ATD</button>
+          <button data-eval="armadaStuffing" data-moda="LAND">Armada by Stuffing</button>
         </div>
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="evalPanel_atd">
       <div class="panel-head">
         <div>
           <h2>Evaluasi ATD — Hari Keberangkatan Kapal</h2>
           <p class="desc">Jumlah kapal departure per hari (kolom AQ). Baris: Tujuan → klik untuk breakdown Pelayaran → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari terbanyak di tiap baris.</p>
         </div>
-        <div class="sort-toggle" id="evalATDViewToggle">
-          <button data-view="numeric" class="active">Angka</button>
-          <button data-view="percent">Persentase</button>
-        </div>
       </div>
       <div id="evalATDRoot"></div>
+    </div>
+
+    <div class="panel" id="evalPanel_armadaStuffing" style="display:none;">
+      <div class="panel-head">
+        <div>
+          <h2>Evaluasi Armada — Berdasarkan Tanggal Stuffing</h2>
+          <p class="desc">Jumlah shipment per hari berdasarkan Req Stuffing (kolom I). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari terbanyak di tiap baris.</p>
+        </div>
+      </div>
+      <div id="evalArmadaRoot"></div>
     </div>
   </div>
 
@@ -494,6 +506,12 @@ const ENG_DAY_MAP = {
   monday:'Senin', tuesday:'Selasa', wednesday:'Rabu', thursday:'Kamis', friday:'Jumat', saturday:'Sabtu', sunday:'Minggu'
 };
 
+function dayFromYmd(ymd){
+  if(!ymd) return '(Kosong)';
+  const d = new Date(ymd + 'T00:00:00');
+  return isNaN(d.getTime()) ? '(Kosong)' : DAY_NAMES_ID[d.getDay()];
+}
+
 function extractDayLabel(raw){
   const trimmed = (raw||'').trim();
   if(!trimmed) return '(Kosong)';
@@ -537,15 +555,31 @@ let detailSortMode = 'trend';
 let expandedTujuanDetail = new Set();
 let expandedVendorDetail = new Set();
 
-// ---------- Evaluasi menu state (SEA only) ----------
+// ---------- Evaluasi menu state (per-moda sub-types) ----------
 let evaluasiType = 'atd';
-let expandedEvalATDPaths = new Set();
-let evalATDViewMode = 'numeric'; // 'numeric' | 'percent'
+let evalViewMode = 'numeric'; // 'numeric' | 'percent'
+let expandedEvalPaths = { atd: new Set(), armadaStuffing: new Set() };
 
-const EVAL_ATD_LEVELS = ['tujuan','pelayaran','vendor'];
-const EVAL_ATD_FIELD  = { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' };
-const EVAL_ATD_ICON   = { tujuan:'🎯', pelayaran:'🚢', vendor:'🚛' };
-const EVAL_ATD_CSSLVL = { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' };
+const EVAL_TYPES = {
+  atd: {
+    moda: 'SEA',
+    headerLabel: 'Tujuan / Pelayaran / Vendor',
+    dayField: 'atdDay',
+    levels: ['tujuan','pelayaran','vendor'],
+    levelField: { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' },
+    levelIcon:  { tujuan:'🎯', pelayaran:'🚢', vendor:'🚛' },
+    levelCss:   { tujuan:'tujuan', pelayaran:'pelayaran', vendor:'vendor' },
+  },
+  armadaStuffing: {
+    moda: 'LAND',
+    headerLabel: 'Tujuan / Armada / Vendor',
+    dayField: 'stuffDay',
+    levels: ['tujuan','armada','vendor'],
+    levelField: { tujuan:'tujuan', armada:'armada', vendor:'vendor' },
+    levelIcon:  { tujuan:'🎯', armada:'🔧', vendor:'🚛' },
+    levelCss:   { tujuan:'tujuan', armada:'armada', vendor:'vendor' },
+  },
+};
 
 const DETAIL_METRICS = {
   doorToDoor: { label:'Door to Door', field:'dtd' },
@@ -595,6 +629,8 @@ async function loadData(){
       const lt = Number(ltRaw);
       if(!isFinite(lt)) continue;
       const toNum = v => { const n = Number((v||'').trim()); return (v!=='' && v!=null && isFinite(n)) ? n : null; };
+      const stuffParsed = iStuff>-1 ? parseDateStr(row[iStuff]) : null;
+      const stuffDay = dayFromYmd(stuffParsed && stuffParsed.ymd);
       recs.push({
         vendor: (row[iVendor]||'(Kosong)').trim() || '(Kosong)',
         tujuan: (row[iTujuan]||'(Kosong)').trim() || '(Kosong)',
@@ -609,7 +645,8 @@ async function loadData(){
         typeLC: (row[IDX_AP]||'').trim().toUpperCase(),
         pelayaran: (row[IDX_V]||'').trim() || '(Kosong)',
         atdDay: extractDayLabel(row[IDX_AQ]),
-        stuffing: iStuff>-1 ? parseDateStr(row[iStuff]) : null,
+        stuffing: stuffParsed,
+        stuffDay,
         sla: iSLA>-1 ? parseDateStr(row[iSLA]) : null,
         noSI: iNoSI>-1 ? (row[iNoSI]||'').trim() : '',
         checkin: iCheckin>-1 ? (row[iCheckin]||'').trim() : '',
@@ -1153,13 +1190,13 @@ function renderDetailByTujuan(recs, metric){
 }
 
 // ---------- Evaluasi menu (SEA only): ATD breakdown Tujuan -> Pelayaran -> Vendor ----------
-function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumns){
-  const levels = EVAL_ATD_LEVELS;
+function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, depth, dayColumns){
+  const levels = cfg.levels;
   if(levelIndex >= levels.length) return '';
   const levelKey = levels[levelIndex];
-  const field = EVAL_ATD_FIELD[levelKey];
-  const icon = EVAL_ATD_ICON[levelKey];
-  const cssLvl = EVAL_ATD_CSSLVL[levelKey];
+  const field = cfg.levelField[levelKey];
+  const icon = cfg.levelIcon[levelKey];
+  const cssLvl = cfg.levelCss[levelKey];
   const isLeaf = levelIndex === levels.length - 1;
   const counts = {};
   records.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
@@ -1170,12 +1207,12 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
   groups.forEach(g => {
     const path = [...pathValues, g.value];
     const pathKey = path.join('||');
-    const expanded = expandedEvalATDPaths.has(pathKey);
+    const expanded = expandedSet.has(pathKey);
     const subset = records.filter(r => r[field]===g.value);
     const indent = 10 + depth*20;
 
     const dayCounts = {};
-    subset.forEach(r => { dayCounts[r.atdDay] = (dayCounts[r.atdDay]||0)+1; });
+    subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0)+1; });
 
     // rank the top 3 days (by count) within this row, so highlight matches regardless of Angka/Persentase mode
     const rankedDays = dayColumns
@@ -1194,7 +1231,7 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
       <td class="atd-total">${g.count.toLocaleString('id-ID')}</td>
       ${dayColumns.map(d => {
         const c = dayCounts[d]||0;
-        const cellText = evalATDViewMode === 'percent'
+        const cellText = evalViewMode === 'percent'
           ? (g.count ? (c/g.count*100).toFixed(1)+'%' : '-')
           : c.toLocaleString('id-ID');
         const rankClass = rankOf[d] ? ' atd-top'+rankOf[d] : '';
@@ -1203,33 +1240,59 @@ function buildEvalATDTableRows(records, levelIndex, pathValues, depth, dayColumn
     </tr>`;
 
     if(expanded){
-      const nextHTML = isLeaf ? '' : buildEvalATDTableRows(subset, levelIndex+1, path, depth+1, dayColumns);
+      const nextHTML = isLeaf ? '' : buildEvalTableRows(cfg, expandedSet, subset, levelIndex+1, path, depth+1, dayColumns);
       html += nextHTML || `<tr class="atd-leaf-note"><td colspan="${dayColumns.length+2}" style="padding-left:${indent+20}px">— level breakdown terakhir —</td></tr>`;
     }
   });
   return html;
 }
 
-function renderEvalATD(){
-  const root = document.getElementById('evalATDRoot');
-  if(!root) return;
-  if(currentModa !== 'SEA'){ root.innerHTML = ''; return; }
+function renderEvalTable(typeKey, rootId){
+  const cfg = EVAL_TYPES[typeKey];
+  const root = document.getElementById(rootId);
+  if(!root || !cfg) return;
+  if(currentModa !== cfg.moda){ root.innerHTML = ''; return; }
   const baseRecords = getBaseRecords();
   if(!baseRecords.length){
     root.innerHTML = '<div class="empty-state" style="height:120px;"><span style="font-size:20px;">📭</span>Tidak ada data</div>';
     return;
   }
-  const hasKosong = baseRecords.some(r => r.atdDay === '(Kosong)');
+  const hasKosong = baseRecords.some(r => r[cfg.dayField] === '(Kosong)');
   const dayColumns = hasKosong ? [...DAY_ORDER_ID, '(Kosong)'] : DAY_ORDER_ID;
-  const bodyHTML = buildEvalATDTableRows(baseRecords, 0, [], 0, dayColumns);
+  const bodyHTML = buildEvalTableRows(cfg, expandedEvalPaths[typeKey], baseRecords, 0, [], 0, dayColumns);
   root.innerHTML = `<div class="atd-table-wrap"><table class="atd-table">
     <thead><tr>
-      <th>Tujuan / Pelayaran / Vendor</th>
+      <th>${cfg.headerLabel}</th>
       <th>Total</th>
       ${dayColumns.map(d => `<th>${d}</th>`).join('')}
     </tr></thead>
     <tbody>${bodyHTML}</tbody>
   </table></div>`;
+}
+
+function updateEvaluasiTypeAvailability(){
+  const btns = document.querySelectorAll('#evaluasiTypeToggle button[data-eval]');
+  let hasValidActive = false;
+  btns.forEach(b => {
+    const show = b.dataset.moda === currentModa;
+    b.style.display = show ? '' : 'none';
+    if(show && b.dataset.eval === evaluasiType) hasValidActive = true;
+  });
+  if(!hasValidActive){
+    const firstBtn = Array.from(btns).find(b => b.dataset.moda === currentModa);
+    if(firstBtn) evaluasiType = firstBtn.dataset.eval;
+  }
+  btns.forEach(b => b.classList.toggle('active', b.dataset.eval === evaluasiType));
+}
+
+function renderEvaluasiMenu(){
+  updateEvaluasiTypeAvailability();
+  Object.keys(EVAL_TYPES).forEach(key => {
+    const panel = document.getElementById('evalPanel_' + key);
+    if(panel) panel.style.display = (evaluasiType === key) ? '' : 'none';
+  });
+  if(evaluasiType === 'atd') renderEvalTable('atd', 'evalATDRoot');
+  else if(evaluasiType === 'armadaStuffing') renderEvalTable('armadaStuffing', 'evalArmadaRoot');
 }
 
 function renderAll(){
@@ -1239,7 +1302,7 @@ function renderAll(){
   renderTree();
   updateFilterCount();
   renderDetail();
-  renderEvalATD();
+  renderEvaluasiMenu();
 }
 
 // ---------- Events ----------
@@ -1249,7 +1312,7 @@ function setActiveMenuTab(menuName){
   document.getElementById('viewDetail').style.display = menuName === 'detail' ? 'flex' : 'none';
   document.getElementById('viewEvaluasi').style.display = menuName === 'evaluasi' ? 'flex' : 'none';
   if(menuName === 'detail') renderDetail(); // redraw so canvases size correctly now that they're visible
-  if(menuName === 'evaluasi') renderEvalATD();
+  if(menuName === 'evaluasi') renderEvaluasiMenu();
 }
 
 document.getElementById('modaSwitch').addEventListener('click', (e) => {
@@ -1259,16 +1322,6 @@ document.getElementById('modaSwitch').addEventListener('click', (e) => {
   expandedPaths = new Set();
   expandedTujuanDetail = new Set();
   expandedVendorDetail = new Set();
-  expandedEvalATDPaths = new Set();
-
-  const evalTabBtn = document.getElementById('menuTabEvaluasi');
-  if(currentModa === 'SEA'){
-    evalTabBtn.style.display = '';
-  } else {
-    const wasOnEvaluasi = evalTabBtn.classList.contains('active');
-    evalTabBtn.style.display = 'none';
-    if(wasOnEvaluasi) setActiveMenuTab('general'); // fallback: don't leave user on a hidden tab
-  }
   renderAll();
 });
 
@@ -1287,24 +1340,32 @@ document.getElementById('menuTabs').addEventListener('click', (e) => {
 });
 
 document.getElementById('evaluasiTypeToggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-eval]'); if(!btn) return;
+  const btn = e.target.closest('button[data-eval]'); if(!btn || btn.style.display==='none') return;
   evaluasiType = btn.dataset.eval;
-  document.querySelectorAll('#evaluasiTypeToggle button').forEach(b => b.classList.toggle('active', b===btn));
-  renderEvalATD();
+  renderEvaluasiMenu();
 });
 
-document.getElementById('evalATDViewToggle').addEventListener('click', (e) => {
+document.getElementById('evalViewToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-view]'); if(!btn) return;
-  evalATDViewMode = btn.dataset.view;
-  document.querySelectorAll('#evalATDViewToggle button').forEach(b => b.classList.toggle('active', b===btn));
-  renderEvalATD();
+  evalViewMode = btn.dataset.view;
+  document.querySelectorAll('#evalViewToggle button').forEach(b => b.classList.toggle('active', b===btn));
+  renderEvaluasiMenu();
 });
 
 document.getElementById('evalATDRoot').addEventListener('click', (e) => {
   const row = e.target.closest('.atd-row'); if(!row) return;
   const key = row.dataset.pathkey;
-  if(expandedEvalATDPaths.has(key)) expandedEvalATDPaths.delete(key); else expandedEvalATDPaths.add(key);
-  renderEvalATD();
+  const set = expandedEvalPaths.atd;
+  if(set.has(key)) set.delete(key); else set.add(key);
+  renderEvaluasiMenu();
+});
+
+document.getElementById('evalArmadaRoot').addEventListener('click', (e) => {
+  const row = e.target.closest('.atd-row'); if(!row) return;
+  const key = row.dataset.pathkey;
+  const set = expandedEvalPaths.armadaStuffing;
+  if(set.has(key)) set.delete(key); else set.add(key);
+  renderEvaluasiMenu();
 });
 
 document.getElementById('detailMetricToggle').addEventListener('click', (e) => {
