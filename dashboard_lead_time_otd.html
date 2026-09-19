@@ -415,7 +415,7 @@
       <div class="panel-head">
         <div>
           <h2>Evaluasi Armada — Berdasarkan Tanggal Stuffing</h2>
-          <p class="desc">Rata-rata kebutuhan armada per hari (total kejadian ÷ jumlah kemunculan hari itu dalam rentang tanggal Req Stuffing terpilih). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. <span style="color:#166534; font-weight:700;">●</span> hijau menandai hari dengan sisa desimal di atas 0,75 — hampir pasti butuh dibulatin ke atas.</p>
+          <p class="desc">Rata-rata kebutuhan armada per hari (total kejadian ÷ jumlah kemunculan hari itu dalam rentang tanggal Req Stuffing terpilih). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. <span style="color:#166534; font-weight:700;">●</span> hijau menandai hari dengan nilai rata-rata di atas 0,75 — kebutuhan armada yang cukup pasti.</p>
         </div>
       </div>
       <div class="detail-toggle-block" style="padding-top:0;">
@@ -1324,16 +1324,16 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
 
     // Marking scheme differs per mode:
     // - ATD (count mode): top-3 busiest days get the medal ranking, unchanged.
-    // - Armada-by-Stuffing (avg mode): mark days whose exact fractional remainder is > 0.75 —
-    //   i.e. the rounding is very close to the next whole unit, signalling a high-confidence/likely-needed extra unit.
+    // - Armada-by-Stuffing (avg mode): mark days whose exact value itself is > 0.75 —
+    //   covers both confirmed demand (value already >= 1) and near-rounding-up cases just below 1 (e.g. 0.80).
+    //   A value like 0.70 stays unmarked even if it later displays as "1" after reconciliation.
     let rankOf = {}, highProbSet = new Set();
     if(isAvgMode){
       dayColumns.forEach(d => {
         if(d === '(Kosong)') return;
         const v = dayVals[d];
         if(v === null) return;
-        const remainder = v - Math.floor(v);
-        if(remainder > 0.75) highProbSet.add(d);
+        if(v > 0.75) highProbSet.add(d);
       });
     } else {
       const rankedDays = dayColumns
