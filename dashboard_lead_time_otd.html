@@ -198,6 +198,8 @@
   .atd-table td.atd-top1::after{content:'🥇'; font-size:9px; margin-left:4px; vertical-align:middle;}
   .atd-table td.atd-top2::after{content:'🥈'; font-size:9px; margin-left:4px; vertical-align:middle;}
   .atd-table td.atd-top3::after{content:'🥉'; font-size:9px; margin-left:4px; vertical-align:middle;}
+  .atd-table td.atd-highprob{background:#dcfce7; color:#166534; font-weight:800;}
+  .atd-table td.atd-highprob::after{content:'●'; font-size:7px; margin-left:5px; vertical-align:middle; color:#22c55e;}
   .atd-table td[data-tip]{position:relative; cursor:help; border-bottom-style:dashed; border-bottom-color:#94a3b8;}
   .atd-table td[data-tip]:hover::before{
     content:attr(data-tip);
@@ -413,7 +415,7 @@
       <div class="panel-head">
         <div>
           <h2>Evaluasi Armada — Berdasarkan Tanggal Stuffing</h2>
-          <p class="desc">Rata-rata kebutuhan armada per hari (total kejadian ÷ jumlah kemunculan hari itu dalam rentang tanggal Req Stuffing terpilih). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. 🥇🥈🥉 menandai 3 hari tertinggi di tiap baris.</p>
+          <p class="desc">Rata-rata kebutuhan armada per hari (total kejadian ÷ jumlah kemunculan hari itu dalam rentang tanggal Req Stuffing terpilih). Baris: Tujuan → klik untuk breakdown Armada → klik lagi untuk breakdown Vendor. <span style="color:#166534; font-weight:700;">●</span> hijau menandai hari dengan sisa desimal di atas 0,75 — hampir pasti butuh dibulatin ke atas.</p>
         </div>
       </div>
       <div class="detail-toggle-block" style="padding-top:0;">
@@ -1320,15 +1322,27 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
     const dayVals = g.dayVals;
     const sumRealVals = dayColumns.filter(d=>d!=='(Kosong)').reduce((s,d) => s + (dayVals[d]||0), 0);
 
-    // rank the top 3 days within this row, based on the exact (unrounded) value — accuracy of ranking shouldn't depend on display rounding
-    const rankPool = isAvgMode ? dayColumns.filter(d => d !== '(Kosong)') : dayColumns;
-    const rankedDays = rankPool
-      .map(d => ({ d, v: dayVals[d] }))
-      .filter(e => e.v !== null && e.v > 0)
-      .sort((a,b) => b.v-a.v)
-      .slice(0, 3);
-    const rankOf = {};
-    rankedDays.forEach((e, i) => { rankOf[e.d] = i+1; });
+    // Marking scheme differs per mode:
+    // - ATD (count mode): top-3 busiest days get the medal ranking, unchanged.
+    // - Armada-by-Stuffing (avg mode): mark days whose exact fractional remainder is > 0.75 —
+    //   i.e. the rounding is very close to the next whole unit, signalling a high-confidence/likely-needed extra unit.
+    let rankOf = {}, highProbSet = new Set();
+    if(isAvgMode){
+      dayColumns.forEach(d => {
+        if(d === '(Kosong)') return;
+        const v = dayVals[d];
+        if(v === null) return;
+        const remainder = v - Math.floor(v);
+        if(remainder > 0.75) highProbSet.add(d);
+      });
+    } else {
+      const rankedDays = dayColumns
+        .map(d => ({ d, v: dayVals[d] }))
+        .filter(e => e.v !== null && e.v > 0)
+        .sort((a,b) => b.v-a.v)
+        .slice(0, 3);
+      rankedDays.forEach((e, i) => { rankOf[e.d] = i+1; });
+    }
 
     const childTarget = {}; // this row's own displayed values, passed down as the reconciliation target for its children
 
@@ -1360,7 +1374,9 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
         } else {
           cellText = v.toLocaleString('id-ID');
         }
-        const rankClass = rankOf[d] ? ' atd-top'+rankOf[d] : '';
+        const rankClass = isAvgMode
+          ? (highProbSet.has(d) ? ' atd-highprob' : '')
+          : (rankOf[d] ? ' atd-top'+rankOf[d] : '');
         const tipAttr = tip ? ` data-tip="${tip}"` : '';
         return `<td class="${rankClass}"${tipAttr}>${cellText}</td>`;
       }).join('')}
