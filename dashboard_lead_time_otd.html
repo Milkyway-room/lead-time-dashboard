@@ -447,6 +447,12 @@
         </div>
       </div>
       <div class="panel-head" style="padding-top:0;">
+        <div><h2 style="font-size:12px;">Periode</h2></div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="filter-group"><div class="date-pair"><input type="date" id="demandPeriodeFrom"><span>–</span><input type="date" id="demandPeriodeTo"></div></div>
+      </div>
+      <div class="panel-head" style="padding-top:0;">
         <div><h2 style="font-size:12px;">Origin</h2></div>
       </div>
       <div class="detail-toggle-block" style="padding-top:0;">
@@ -609,8 +615,8 @@ function getEvalTimeFrame(records){
   return { start, end };
 }
 
-// Time frame for the Demand sheet (CBM & DO): its own "Periode" date range has no equivalent global filter,
-// so it's simply the actual min/max Periode present in the (already locally-filtered) demand records.
+// Time frame for the Demand sheet (CBM & DO): uses the explicit Periode filter when set,
+// else falls back to the actual min/max Periode present in the (already locally-filtered) demand records.
 function getDemandTimeFrame(records){
   let minYmd = null, maxYmd = null;
   records.forEach(r => {
@@ -619,8 +625,10 @@ function getDemandTimeFrame(records){
     if(!minYmd || ymd < minYmd) minYmd = ymd;
     if(!maxYmd || ymd > maxYmd) maxYmd = ymd;
   });
-  if(!minYmd || !maxYmd) return null;
-  return { start: minYmd, end: maxYmd };
+  const start = demandFilters.periodeFrom || minYmd;
+  const end = demandFilters.periodeTo || maxYmd;
+  if(!start || !end) return null;
+  return { start, end };
 }
 
 // Counts how many times each weekday (Senin..Minggu) occurs within [start, end] inclusive.
@@ -660,7 +668,7 @@ function extractDayLabel(raw){
 let RECORDS = [];
 let DEMAND_RECORDS = []; // records from the separate "Data Demand In" sheet(s), used by the CBM & DO evaluation
 let demandMetric = 'do'; // 'do' | 'cbm'
-let demandFilters = { origin: 'all', ownerBU: 'all', typeDO: 'all' };
+let demandFilters = { origin: 'all', ownerBU: 'all', typeDO: 'all', periodeFrom: '', periodeTo: '' };
 let currentModa = 'LAND';
 let sortMode = 'trend';
 let expandedPaths = new Set();   // path keys like "Jakarta||Balikpapan||SPA"
@@ -1577,6 +1585,15 @@ function renderEvalTable(typeKey, rootId){
     if(demandFilters.origin !== 'all') baseRecords = baseRecords.filter(r => r.origin === demandFilters.origin);
     if(demandFilters.ownerBU !== 'all') baseRecords = baseRecords.filter(r => r.ownerBU === demandFilters.ownerBU);
     if(demandFilters.typeDO !== 'all') baseRecords = baseRecords.filter(r => r.typeDO === demandFilters.typeDO);
+    if(demandFilters.periodeFrom || demandFilters.periodeTo){
+      baseRecords = baseRecords.filter(r => {
+        const ymd = r.periode && r.periode.ymd;
+        if(!ymd) return false;
+        if(demandFilters.periodeFrom && ymd < demandFilters.periodeFrom) return false;
+        if(demandFilters.periodeTo && ymd > demandFilters.periodeTo) return false;
+        return true;
+      });
+    }
   } else {
     baseRecords = getBaseRecords();
     // panel-local Type LC filter (currently only exposed on the Armada-by-Stuffing panel)
@@ -1745,6 +1762,9 @@ function wireDemandFilterToggle(containerId, stateKey){
 wireDemandFilterToggle('demandOriginToggle', 'origin');
 wireDemandFilterToggle('demandOwnerToggle', 'ownerBU');
 wireDemandFilterToggle('demandTypeDOToggle', 'typeDO');
+
+document.getElementById('demandPeriodeFrom').addEventListener('change', e => { demandFilters.periodeFrom = e.target.value; renderEvaluasiMenu(); });
+document.getElementById('demandPeriodeTo').addEventListener('change', e => { demandFilters.periodeTo = e.target.value; renderEvaluasiMenu(); });
 
 document.getElementById('detailMetricToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-metric]'); if(!btn || btn.disabled) return;
