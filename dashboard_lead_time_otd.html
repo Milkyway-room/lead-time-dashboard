@@ -397,6 +397,7 @@
         <div class="menu-tabs" id="evaluasiTypeToggle">
           <button data-eval="atd" data-moda="SEA" class="active">ATD</button>
           <button data-eval="armadaStuffing" data-moda="LAND">Armada by Stuffing</button>
+          <button data-eval="demandCBMDO" data-moda="LAND">CBM & DO</button>
         </div>
       </div>
     </div>
@@ -431,6 +432,41 @@
       </div>
       <div id="evalArmadaRoot"></div>
     </div>
+
+    <div class="panel" id="evalPanel_demandCBMDO" style="display:none;">
+      <div class="panel-head">
+        <div>
+          <h2>Evaluasi CBM & DO — Data Demand In</h2>
+          <p class="desc">Rata-rata kebutuhan per hari dari sheet Demand In terpisah (kolom J = Periode). Baris: City → klik untuk breakdown Ship to Name. <span style="color:#166534; font-weight:700;">●</span> hijau menandai hari dengan nilai di atas 0,75.</p>
+        </div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="menu-tabs" id="demandMetricToggle">
+          <button data-metric="do" class="active">DO</button>
+          <button data-metric="cbm">CBM</button>
+        </div>
+      </div>
+      <div class="panel-head" style="padding-top:0;">
+        <div><h2 style="font-size:12px;">Origin</h2></div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="menu-tabs" id="demandOriginToggle"><button data-val="all" class="active">Semua</button></div>
+      </div>
+      <div class="panel-head" style="padding-top:0;">
+        <div><h2 style="font-size:12px;">Owner BU</h2></div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="menu-tabs" id="demandOwnerToggle"><button data-val="all" class="active">Semua</button></div>
+      </div>
+      <div class="panel-head" style="padding-top:0;">
+        <div><h2 style="font-size:12px;">Type DO</h2></div>
+      </div>
+      <div class="detail-toggle-block" style="padding-top:0;">
+        <div class="menu-tabs" id="demandTypeDOToggle"><button data-val="all" class="active">Semua</button></div>
+      </div>
+      <div class="err-box" id="demandErrBox" style="display:none; margin:0 18px 14px;"></div>
+      <div id="evalDemandRoot"></div>
+    </div>
   </div>
 
   <p style="text-align:center; font-size:11px; color:var(--text-faint); margin:4px 0 0;">Data live dari Google Sheets · Kolom Lead Time = kolom AL · Klik batang chart untuk lihat detail data</p>
@@ -458,6 +494,10 @@
 <script>
 const CONFIG = {
   CSV_URL: 'https://docs.google.com/spreadsheets/d/1S93bDhZDka93Fq7YE4YZeuAJb4zw2WqHA1Iw_EuWqLY/gviz/tq?tqx=out:csv&gid=1697954294',
+  // "Data Demand In" — one URL per Origin sheet. Add a new URL here whenever a new Origin/BU sheet is published.
+  DEMAND_CSV_URLS: [
+    'https://docs.google.com/spreadsheets/d/e/2PACX-1vQyFxS2Y7ZJLIR197TVN8cb9LrlznfL4sNwcnmlj4yhrFV1rS0NR8q8vZ7IAFk_tKge39ncZ9Qei6a8/pub?output=csv',
+  ],
 };
 
 // register the bar-value label plugin if it loaded successfully (falls back gracefully if CDN blocked)
@@ -527,6 +567,24 @@ const ENG_DAY_MAP = {
   monday:'Senin', tuesday:'Selasa', wednesday:'Rabu', thursday:'Kamis', friday:'Jumat', saturday:'Sabtu', sunday:'Minggu'
 };
 
+// Parses the Demand sheet's "Periode" column, format DD/MM/YYYY (e.g. "20/07/2026").
+function parseDDMMYYYY(str){
+  if(!str) return null;
+  str = str.trim();
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(!m) return null;
+  const day = parseInt(m[1],10), month = parseInt(m[2],10), year = parseInt(m[3],10);
+  if(month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const ymd = year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+  return { ymd };
+}
+// Parses Indonesian-locale numbers (comma decimal separator, e.g. "0,77 ") used in the Demand sheet's CBM column.
+function parseIDNumber(str){
+  if(str === undefined || str === null) return 0;
+  const n = parseFloat(String(str).trim().replace(',', '.'));
+  return isFinite(n) ? n : 0;
+}
+
 function dayFromYmd(ymd){
   if(!ymd) return '(Kosong)';
   const d = new Date(ymd + 'T00:00:00');
@@ -546,6 +604,20 @@ function getEvalTimeFrame(records){
   const end = filters.stuffTo || maxYmd;
   if(!start || !end) return null;
   return { start, end };
+}
+
+// Time frame for the Demand sheet (CBM & DO): its own "Periode" date range has no equivalent global filter,
+// so it's simply the actual min/max Periode present in the (already locally-filtered) demand records.
+function getDemandTimeFrame(records){
+  let minYmd = null, maxYmd = null;
+  records.forEach(r => {
+    const ymd = r.periode && r.periode.ymd;
+    if(!ymd) return;
+    if(!minYmd || ymd < minYmd) minYmd = ymd;
+    if(!maxYmd || ymd > maxYmd) maxYmd = ymd;
+  });
+  if(!minYmd || !maxYmd) return null;
+  return { start: minYmd, end: maxYmd };
 }
 
 // Counts how many times each weekday (Senin..Minggu) occurs within [start, end] inclusive.
@@ -583,6 +655,9 @@ function extractDayLabel(raw){
 
 // ---------- State ----------
 let RECORDS = [];
+let DEMAND_RECORDS = []; // records from the separate "Data Demand In" sheet(s), used by the CBM & DO evaluation
+let demandMetric = 'do'; // 'do' | 'cbm'
+let demandFilters = { origin: 'all', ownerBU: 'all', typeDO: 'all' };
 let currentModa = 'LAND';
 let sortMode = 'trend';
 let expandedPaths = new Set();   // path keys like "Jakarta||Balikpapan||SPA"
@@ -612,7 +687,7 @@ let expandedVendorDetail = new Set();
 // ---------- Evaluasi menu state (per-moda sub-types) ----------
 let evaluasiType = 'atd';
 let evalViewMode = 'numeric'; // 'numeric' | 'percent'
-let expandedEvalPaths = { atd: new Set(), armadaStuffing: new Set() };
+let expandedEvalPaths = { atd: new Set(), armadaStuffing: new Set(), demandCBMDO: new Set() };
 let evalArmadaTypeLC = 'all'; // Type LC filter local to the Armada-by-Stuffing panel
 
 const EVAL_TYPES = {
@@ -635,6 +710,19 @@ const EVAL_TYPES = {
     levelField: { tujuan:'tujuan', armada:'armada', vendor:'vendor' },
     levelIcon:  { tujuan:'🎯', armada:'🔧', vendor:'🚛' },
     levelCss:   { tujuan:'tujuan', armada:'armada', vendor:'vendor' },
+  },
+  demandCBMDO: {
+    moda: 'LAND',
+    dataSource: 'demand', // reads DEMAND_RECORDS instead of RECORDS/getBaseRecords()
+    headerLabel: 'City / Ship to Name',
+    dayField: 'demandDay',
+    valueMode: 'avgPerOccurrence', // total DO/CBM on that weekday / how many times that weekday occurred in the selected time frame
+    getAggField: () => demandMetric === 'cbm' ? 'cbmQty' : 'doQty', // sum this field per day instead of counting rows
+    getUnitLabel: () => demandMetric === 'cbm' ? ' CBM' : ' DO',
+    levels: ['city','shipToName'],
+    levelField: { city:'city', shipToName:'shipToName' },
+    levelIcon:  { city:'🏙️', shipToName:'📦' },
+    levelCss:   { city:'tujuan', shipToName:'vendor' },
   },
 };
 
@@ -737,6 +825,86 @@ function setStatus(state, text){
   const dot = document.getElementById('statusDot');
   dot.className = 'status-dot' + (state==='loading' ? ' loading' : state==='error' ? ' error' : '');
   document.getElementById('statusText').textContent = text;
+}
+
+// ---------- Demand In data (separate sheet, powers the CBM & DO evaluation) ----------
+// Columns are addressed by letter (B, C, D, E, G, I, J, K) per the source spec, not by header name,
+// since this sheet's layout is defined by the business team independently of the main lead-time sheet.
+const IDX_DEM_SHIPTONAME = colLetterToIndex('B');
+const IDX_DEM_CITY       = colLetterToIndex('C');
+const IDX_DEM_OWNER      = colLetterToIndex('D');
+const IDX_DEM_TYPEORDER  = colLetterToIndex('E');
+const IDX_DEM_DOQTY      = colLetterToIndex('G');
+const IDX_DEM_CBM        = colLetterToIndex('I');
+const IDX_DEM_PERIODE    = colLetterToIndex('J');
+const IDX_DEM_DCNAME     = colLetterToIndex('K');
+
+async function loadDemandData(){
+  const allRecs = [];
+  let lastError = null;
+  for(const url of (CONFIG.DEMAND_CSV_URLS || [])){
+    try{
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'cachebust=' + Date.now());
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const rows = parseCSV(text);
+      for(let r=1;r<rows.length;r++){
+        const row = rows[r];
+        if(!row || row.length < 2) continue;
+        const city = (row[IDX_DEM_CITY]||'').trim();
+        const shipToName = (row[IDX_DEM_SHIPTONAME]||'').trim();
+        const periodeRaw = (row[IDX_DEM_PERIODE]||'').trim();
+        if(!city && !shipToName && !periodeRaw) continue; // skip blank spacer rows
+        const periodeParsed = parseDDMMYYYY(periodeRaw);
+        allRecs.push({
+          city: city || '(Kosong)',
+          shipToName: shipToName || '(Kosong)',
+          ownerBU: (row[IDX_DEM_OWNER]||'').trim() || '(Kosong)',
+          typeDO: (row[IDX_DEM_TYPEORDER]||'').trim() || '(Kosong)',
+          origin: (row[IDX_DEM_DCNAME]||'').trim() || '(Kosong)',
+          doQty: parseIDNumber(row[IDX_DEM_DOQTY]),
+          cbmQty: parseIDNumber(row[IDX_DEM_CBM]),
+          periode: periodeParsed,
+          demandDay: dayFromYmd(periodeParsed && periodeParsed.ymd),
+        });
+      }
+    } catch(e){
+      console.error('Gagal memuat Demand In sheet:', url, e);
+      lastError = e;
+    }
+  }
+  DEMAND_RECORDS = allRecs;
+  const errBox = document.getElementById('demandErrBox');
+  if(errBox){
+    if(lastError && !allRecs.length){
+      errBox.style.display = 'block';
+      errBox.textContent = 'Gagal memuat data Demand In: ' + lastError.message + '. Pastikan sheet sudah di-"Publish to web" dan link masih aktif, lalu klik Refresh.';
+    } else {
+      errBox.style.display = 'none';
+    }
+  }
+  buildDemandFilterOptions();
+  renderEvaluasiMenu();
+}
+
+function buildDemandFilterOptions(){
+  const mount = (field, containerId, stateKey) => {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+    const counts = {};
+    DEMAND_RECORDS.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
+    const values = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+    if(demandFilters[stateKey] !== 'all' && !values.includes(demandFilters[stateKey])) demandFilters[stateKey] = 'all';
+    const active = demandFilters[stateKey];
+    let html = `<button data-val="all" class="${active==='all'?'active':''}">Semua</button>`;
+    values.forEach(v => {
+      html += `<button data-val="${v.replace(/"/g,'&quot;')}" class="${active===v?'active':''}">${v}</button>`;
+    });
+    container.innerHTML = html;
+  };
+  mount('origin', 'demandOriginToggle', 'origin');
+  mount('ownerBU', 'demandOwnerToggle', 'ownerBU');
+  mount('typeDO', 'demandTypeDOToggle', 'typeDO');
 }
 
 // ---------- Global filters ----------
@@ -1271,16 +1439,19 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
   const cssLvl = cfg.levelCss[levelKey];
   const isLeaf = levelIndex === levels.length - 1;
   const isAvgMode = cfg.valueMode === 'avgPerOccurrence';
-  const counts = {};
-  records.forEach(r => { counts[r[field]] = (counts[r[field]]||0)+1; });
-  let groups = Object.keys(counts).map(v => ({value:v, count:counts[v]})).sort((a,b)=>b.count-a.count);
+  const aggField = cfg.getAggField ? cfg.getAggField() : null; // when set, SUM this field per group/day instead of counting rows (used by CBM & DO)
+  const metricOf = r => aggField ? (r[aggField]||0) : 1;
+
+  const totals = {};
+  records.forEach(r => { totals[r[field]] = (totals[r[field]]||0) + metricOf(r); });
+  let groups = Object.keys(totals).map(v => ({value:v, count:totals[v]})).sort((a,b)=>b.count-a.count);
   if(!groups.length) return '';
 
   // Pass 1: each group's subset + exact (unrounded) day values
   groups.forEach(g => {
     g.subset = records.filter(r => r[field]===g.value);
     const dayCounts = {};
-    g.subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0)+1; });
+    g.subset.forEach(r => { dayCounts[r[cfg.dayField]] = (dayCounts[r[cfg.dayField]]||0) + metricOf(r); });
     g.dayVals = {};
     dayColumns.forEach(d => {
       if(isAvgMode && d !== '(Kosong)'){
@@ -1352,7 +1523,7 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
         <span class="chevron-sm">${expanded?'▾':'▸'}</span>
         <span class="acc-icon-sm">${icon}</span>${g.value}
       </td>
-      <td class="atd-total">${g.count.toLocaleString('id-ID')}</td>
+      <td class="atd-total">${g.count.toLocaleString('id-ID', {maximumFractionDigits:2})}</td>
       ${dayColumns.map(d => {
         const v = dayVals[d];
         const isKosongCol = d === '(Kosong)';
@@ -1373,7 +1544,7 @@ function buildEvalTableRows(cfg, expandedSet, records, levelIndex, pathValues, d
           tip = v.toFixed(2);
           childTarget[d] = dv;
         } else {
-          cellText = v.toLocaleString('id-ID');
+          cellText = v.toLocaleString('id-ID', {maximumFractionDigits:2});
         }
         const rankClass = isAvgMode
           ? (highProbSet.has(d) ? ' atd-highprob' : '')
@@ -1396,13 +1567,21 @@ function renderEvalTable(typeKey, rootId){
   const root = document.getElementById(rootId);
   if(!root || !cfg) return;
   if(currentModa !== cfg.moda){ root.innerHTML = ''; return; }
-  let baseRecords = getBaseRecords();
 
-  // panel-local Type LC filter (currently only exposed on the Armada-by-Stuffing panel)
-  if(typeKey === 'armadaStuffing'){
-    const lcGroup = TYPE_LC_GROUPS[evalArmadaTypeLC];
-    if(lcGroup && lcGroup.letters){
-      baseRecords = baseRecords.filter(r => lcGroup.letters.includes(r.typeLC));
+  let baseRecords;
+  if(cfg.dataSource === 'demand'){
+    baseRecords = DEMAND_RECORDS;
+    if(demandFilters.origin !== 'all') baseRecords = baseRecords.filter(r => r.origin === demandFilters.origin);
+    if(demandFilters.ownerBU !== 'all') baseRecords = baseRecords.filter(r => r.ownerBU === demandFilters.ownerBU);
+    if(demandFilters.typeDO !== 'all') baseRecords = baseRecords.filter(r => r.typeDO === demandFilters.typeDO);
+  } else {
+    baseRecords = getBaseRecords();
+    // panel-local Type LC filter (currently only exposed on the Armada-by-Stuffing panel)
+    if(typeKey === 'armadaStuffing'){
+      const lcGroup = TYPE_LC_GROUPS[evalArmadaTypeLC];
+      if(lcGroup && lcGroup.letters){
+        baseRecords = baseRecords.filter(r => lcGroup.letters.includes(r.typeLC));
+      }
     }
   }
 
@@ -1413,17 +1592,18 @@ function renderEvalTable(typeKey, rootId){
 
   let dayOccurrences = null;
   if(cfg.valueMode === 'avgPerOccurrence'){
-    const timeFrame = getEvalTimeFrame(baseRecords);
+    const timeFrame = cfg.dataSource === 'demand' ? getDemandTimeFrame(baseRecords) : getEvalTimeFrame(baseRecords);
     dayOccurrences = timeFrame ? countWeekdayOccurrences(timeFrame.start, timeFrame.end) : {};
   }
 
   const hasKosong = baseRecords.some(r => r[cfg.dayField] === '(Kosong)');
   const dayColumns = hasKosong ? [...DAY_ORDER_ID, '(Kosong)'] : DAY_ORDER_ID;
   const bodyHTML = buildEvalTableRows(cfg, expandedEvalPaths[typeKey], baseRecords, 0, [], 0, dayColumns, dayOccurrences);
+  const unitSuffix = cfg.getUnitLabel ? ` (${cfg.getUnitLabel().trim()})` : '';
   root.innerHTML = `<div class="atd-table-wrap"><table class="atd-table">
     <thead><tr>
       <th>${cfg.headerLabel}</th>
-      <th>Total</th>
+      <th>Total${unitSuffix}</th>
       ${dayColumns.map(d => `<th>${d}</th>`).join('')}
     </tr></thead>
     <tbody>${bodyHTML}</tbody>
@@ -1453,6 +1633,7 @@ function renderEvaluasiMenu(){
   });
   if(evaluasiType === 'atd') renderEvalTable('atd', 'evalATDRoot');
   else if(evaluasiType === 'armadaStuffing') renderEvalTable('armadaStuffing', 'evalArmadaRoot');
+  else if(evaluasiType === 'demandCBMDO') renderEvalTable('demandCBMDO', 'evalDemandRoot');
 }
 
 function renderAll(){
@@ -1492,7 +1673,7 @@ document.getElementById('sortToggle').addEventListener('click', (e) => {
   renderAll();
 });
 
-document.getElementById('refreshBtn').addEventListener('click', loadData);
+document.getElementById('refreshBtn').addEventListener('click', () => { loadData(); loadDemandData(); });
 
 document.getElementById('menuTabs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-menu]'); if(!btn || btn.disabled || btn.style.display==='none') return;
@@ -1534,6 +1715,33 @@ document.getElementById('evalArmadaTypeLCToggle').addEventListener('click', (e) 
   document.querySelectorAll('#evalArmadaTypeLCToggle button').forEach(b => b.classList.toggle('active', b===btn));
   renderEvaluasiMenu();
 });
+
+document.getElementById('evalDemandRoot').addEventListener('click', (e) => {
+  const row = e.target.closest('.atd-row'); if(!row) return;
+  const key = row.dataset.pathkey;
+  const set = expandedEvalPaths.demandCBMDO;
+  if(set.has(key)) set.delete(key); else set.add(key);
+  renderEvaluasiMenu();
+});
+
+document.getElementById('demandMetricToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-metric]'); if(!btn) return;
+  demandMetric = btn.dataset.metric;
+  document.querySelectorAll('#demandMetricToggle button').forEach(b => b.classList.toggle('active', b===btn));
+  renderEvaluasiMenu();
+});
+
+function wireDemandFilterToggle(containerId, stateKey){
+  document.getElementById(containerId).addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]'); if(!btn) return;
+    demandFilters[stateKey] = btn.dataset.val;
+    document.querySelectorAll('#'+containerId+' button').forEach(b => b.classList.toggle('active', b===btn));
+    renderEvaluasiMenu();
+  });
+}
+wireDemandFilterToggle('demandOriginToggle', 'origin');
+wireDemandFilterToggle('demandOwnerToggle', 'ownerBU');
+wireDemandFilterToggle('demandTypeDOToggle', 'typeDO');
 
 document.getElementById('detailMetricToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-metric]'); if(!btn || btn.disabled) return;
@@ -1587,6 +1795,7 @@ document.getElementById('treeSearch').addEventListener('input', (e) => {
 });
 
 loadData();
+loadDemandData();
 </script>
 </body>
 </html>
